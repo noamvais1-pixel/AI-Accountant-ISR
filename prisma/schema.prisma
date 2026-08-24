@@ -1,0 +1,245 @@
+// מערכת הנהלת חשבונות ומע"מ — סכימת נתונים
+// כל סכומי הכסף נשמרים כמספרים שלמים באגורות (Int) כדי למנוע שגיאות עיגול.
+// שיעורי מע"מ ואחוזי ניכוי נשמרים בנקודות בסיס (basis points): 1800 = 18.00%, 10000 = 100.00%
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// עסק (תיק). היום עסק אחד — הסכימה מוכנה לריבוי לקוחות/תיקים.
+// ---------------------------------------------------------------------------
+
+enum LegalType {
+  OSEK_PATUR // עוסק פטור
+  OSEK_MURSHE // עוסק מורשה
+  COMPANY // חברה בע"מ
+  AMUTA // עמותה
+}
+
+enum VatFrequency {
+  MONTHLY // דיווח חודשי
+  BIMONTHLY // דיווח דו-חודשי
+}
+
+model Business {
+  id           String       @id @default(cuid())
+  name         String
+  vatId        String       @unique // מספר עוסק מורשה / ח.פ — 9 ספרות
+  legalType    LegalType    @default(OSEK_MURSHE)
+  vatFrequency VatFrequency @default(BIMONTHLY)
+
+  address String?
+  city    String?
+  phone   String?
+  email   String?
+
+  // קארדקום — מזהי מסוף. הסודות (ApiName/ApiPassword) נשמרים במשתני סביבה, לא ב-DB.
+  cardcomTerminal       String?
+  cardcomLastSyncAt     DateTime?
+  cardcomDefaultDocType String    @default("TaxInvoiceAndReceipt")
+
+  // גוגל דרייב — גיבוי הצילומים.
+  // ה-refresh token נשמר כאן ולא ב-env כי הוא נוצר בזמן ריצה בתהליך ההרשאה,
+  // ומשויך לחשבון מסוים. הוא סוד לכל דבר — אסור להחזיר אותו בשום תשובת API.
+  driveRefreshToken String?
+  driveAccountEmail String?
+  driveRootFolderId String?
+  driveConnectedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents Document[]
+  contacts  Contact[]
+  periods   VatPeriod[]
+
+  @@map("businesses")
+}
+
+// ---------------------------------------------------------------------------
+// ספקים ולקוחות
+// ---------------------------------------------------------------------------
+
+enum ContactType {
+  SUPPLIER // ספק
+  CUSTOMER // לקוח
+  BOTH
+}
+
+model Contact {
+  id         String      @id @default(cuid())
+  businessId String
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type       ContactType @default(SUPPLIER)
+
+  name  String
+  vatId String? // ח.פ / ע.מ של הצד השני
+  email String?
+  phone String?
+
+  // ברירת מחדל לסיווג הוצאות מהספק הזה — נלמד מהפעם הקודמת
+  defaultCategory     String?
+  defaultInputKind    InputKind?
+  defaultDeductibleBp Int?
+
+  documents Document[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([businessId, vatId])
+  @@index([businessId, name])
+  @@map("contacts")
+}
+
+// ---------------------------------------------------------------------------
+// מסמכים — הליבה. הכנסות והוצאות באותה טבלה, מובחנות ב-direction.
+// ---------------------------------------------------------------------------
+
+enum Direction {
+  INCOME // עסקאות (מכר)
+  EXPENSE // תשומות (רכש)
+}
+
+enum DocType {
+  TAX_INVOICE // חשבונית מס
+  TAX_INVOICE_RECEIPT // חשבונית מס/קבלה
+  RECEIPT // קבלה בלבד (לא מזכה במע"מ תשומות)
+  CREDIT_INVOICE // חשבונית זיכוי — נרשמת בסימן הפוך
+  IMPORT_DECLARATION // רשימון יבוא
+  SELF_INVOICE // חשבונית עצמית
+  PETTY_CASH // קופה קטנה
+  OTHER_DOC // מסמך אחר המותר בניכוי
+}
+
+enum DocStatus {
+  DRAFT // נסרק/נקלט וממתין לאישור
+  CONFIRMED // אושר ונכנס לדוחות
+  VOID // בוטל
+}
+
+enum VatTreatment {
+  STANDARD // חייב במע"מ בשיעור מלא
+  ZERO_RATED // מע"מ בשיעור אפס (למשל ייצוא)
+  EXEMPT // פטור ממע"מ
+  NO_VAT // ללא מע"מ (למשל תשלום לעוסק פטור, ביטוח לאומי)
+}
+
+enum InputKind {
+  EQUIPMENT // תשומות ציוד (רכוש קבוע)
+  OTHER // תשומות אחרות (שוטפות)
+}
+
+enum DocSource {
+  MANUAL // הזנה ידנית
+  SCAN // צילום/סריקה + חילוץ AI
+  CARDCOM // נמשך אוטומטית מקארדקום
+  EMAIL // נקלט ממייל (עתידי)
+}
+
+model Document {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  direction  Direction
+  docType    DocType
+  status     DocStatus @default(DRAFT)
+
+  issueDate  DateTime // תאריך המסמך
+  reportDate DateTime // התאריך לפיו המסמך משויך לתקופת הדיווח
+
+  number           String // מספר המסמך אצל המוציא
+  allocationNumber String? // מספר הקצאה (חשבונית ישראל)
+
+  contactId         String?
+  contact           Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  counterpartyName  String
+  counterpartyVatId String?
+
+  // --- כספים, הכל באגורות ---
+  currency    String   @default("ILS")
+  fxRate      Decimal? @db.Decimal(12, 6) // שער המרה לש"ח אם המטבע אינו ש"ח
+  netAgorot   Int // סכום לפני מע"מ (100%, תמיד חיובי; זיכוי מסומן ב-isCredit)
+  vatAgorot   Int // סכום המע"מ במסמך
+  totalAgorot Int // סה"כ כולל מע"מ
+  vatRateBp   Int // שיעור המע"מ שחל, בנקודות בסיס
+
+  isCredit Boolean @default(false) // חשבונית זיכוי — נספרת בסימן שלילי בדוחות
+
+  // --- טיפול מע"מ ---
+  vatTreatment VatTreatment @default(STANDARD)
+  inputKind    InputKind? // רק להוצאות: ציוד או שוטף
+  deductibleBp Int          @default(10000) // אחוז ניכוי מע"מ תשומות: 10000=100%, 6667=2/3, 2500=25%, 0=לא מוכר
+
+  // מע"מ תשומות המוכר בפועל = round(vatAgorot * deductibleBp / 10000). מחושב בשמירה.
+  deductibleVatAgorot Int @default(0)
+
+  category String? // סיווג הוצאה לדוח רווח והפסד
+  notes    String?
+
+  // --- מקור ומעקב ---
+  source        DocSource @default(MANUAL)
+  externalId    String? // מזהה במערכת המקור (למשל קארדקום)
+  fileKey       String? // נתיב הקובץ שנסרק
+  fileMime      String?
+  ocrRaw        Json? // הפלט הגולמי של חילוץ ה-AI, לביקורת
+  ocrConfidence Float?
+
+  // גיבוי הקובץ הסרוק בגוגל דרייב
+  driveFileId     String?
+  driveBackedUpAt DateTime?
+
+  vatPeriodId String?
+  vatPeriod   VatPeriod? @relation(fields: [vatPeriodId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // מניעת כפילויות בסנכרון מקארדקום
+  @@unique([businessId, source, externalId])
+  @@index([businessId, direction, reportDate])
+  @@index([businessId, status])
+  @@index([businessId, counterpartyVatId])
+  @@map("documents")
+}
+
+// ---------------------------------------------------------------------------
+// תקופות דיווח מע"מ
+// ---------------------------------------------------------------------------
+
+enum PeriodStatus {
+  OPEN // פתוחה לשינויים
+  CLOSED // נסגרה, הדוח הופק
+  FILED // דווחה לרשות המסים
+}
+
+model VatPeriod {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  year      Int
+  periodNo  Int // 1..12 בדיווח חודשי, 1..6 בדיווח דו-חודשי
+  startDate DateTime
+  endDate   DateTime
+
+  status   PeriodStatus @default(OPEN)
+  closedAt DateTime?
+  filedAt  DateTime?
+
+  // צילום מצב הסכומים ברגע הסגירה — כדי שדוח שהוגש לא ישתנה רטרואקטיבית
+  snapshot Json?
+
+  documents Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([businessId, year, periodNo])
+  @@map("vat_periods")
+}

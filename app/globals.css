@@ -1,0 +1,68 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: var(--font-heebo), ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink-50: #f6f7f9;
+  --color-ink-100: #eceef2;
+  --color-ink-200: #d5dae3;
+  --color-ink-300: #b0b9c9;
+  --color-ink-400: #8592aa;
+  --color-ink-500: #64738f;
+  --color-ink-600: #4e5b75;
+  --color-ink-700: #404a5f;
+  --color-ink-800: #374050;
+  --color-ink-900: #1e2430;
+  --color-ink-950: #12161e;
+
+  --color-brand-50: #eefbf6;
+  --color-brand-100: #d5f5e8;
+  --color-brand-200: #aeead4;
+  --color-brand-400: #48c79c;
+  --color-brand-500: #21ab80;
+  --color-brand-600: #138a68;
+  --color-brand-700: #106e56;
+  --color-brand-800: #115746;
+  --color-brand-900: #0f483b;
+}
+
+:root {
+  --surface: #f6f7f9;
+  --panel: #ffffff;
+  --border: #e3e7ee;
+  --text: #1e2430;
+  --muted: #64738f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #12161e;
+    --panel: #1a1f29;
+    --border: #2b3240;
+    --text: #e8ebf0;
+    --muted: #8592aa;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--surface);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* מספרים תמיד ברוחב אחיד — טורי סכומים חייבים להתיישר זה מתחת לזה */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* סכומי כסף נקראים משמאל לימין גם בתוך טקסט עברי */
+.ltr-num {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
