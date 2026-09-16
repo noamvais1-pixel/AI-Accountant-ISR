@@ -1,6 +1,7 @@
 # תלויות ובנייה
 node_modules/
 .next/
+.next-app/
 out/
 build/
 *.tsbuildinfo
@@ -34,6 +35,7 @@ Thumbs.db
 .idea/
 .vscode/
 .claude/
+.playwright-mcp/
 
 # קבצים זמניים
 *.log
