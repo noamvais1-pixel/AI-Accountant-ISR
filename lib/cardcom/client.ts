@@ -267,7 +267,9 @@ export async function listDocuments(
       FromDateYYYYMMDD: args.fromDate.replace(/-/g, ''),
       ToDateYYYYMMDD: args.toDate.replace(/-/g, ''),
       DocType: args.docType ?? -2, // -2 = כל המסמכים; הסינון נעשה אצלנו
-      CoinId: 0,
+      // CoinId אינו נשלח בכוונה. התיעוד אומר ש-0 הוא "כל המטבעות", אבל בפועל
+      // הוא מחזיר אפס מסמכים עם קוד הצלחה — כלומר תקלה שנראית כמו מסוף ריק.
+      // השמטת השדה מחזירה את כל המסמכים.
       OpenClose: 0,
       PageNumber: page,
       ItemsPerPage: itemsPerPage,

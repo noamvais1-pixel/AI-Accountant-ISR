@@ -92,6 +92,25 @@ export async function syncCardcomDocuments(args: {
         select: { id: true, vatPeriod: { select: { status: true } } },
       });
 
+      // אותה חשבונית עשויה להיות כבר בספרים ממקור אחר — למשל קובץ PDF שנקלט
+      // מהדרייב. בלי הבדיקה הזו הסנכרון היה סופר אותה פעם שנייה ומנפח את
+      // ההכנסות. ההתאמה היא לפי מספר המסמך והכיוון, שהם הזיהוי החשבונאי שלה.
+      if (!existing) {
+        const sameDocument = await prisma.document.findFirst({
+          where: {
+            businessId: args.businessId,
+            direction: 'INCOME',
+            number: doc.documentNumber,
+            source: { not: 'CARDCOM' },
+          },
+          select: { id: true },
+        });
+        if (sameDocument) {
+          result.skipped++;
+          continue;
+        }
+      }
+
       if (existing) {
         // מסמך ששויך לתקופה שכבר דווחה לא משתנה — שינוי רטרואקטיבי יסתור את הדוח שהוגש.
         if (existing.vatPeriod?.status === 'FILED') {

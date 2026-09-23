@@ -40,6 +40,35 @@ export async function alreadyIngested(businessId: string, externalId: string): P
 }
 
 /**
+ * האם אותו מסמך כבר בספרים, גם אם הקובץ שונה.
+ *
+ * טביעת אצבע של הקובץ אינה מספיקה: אותה חשבונית נשמרת לעיתים פעמיים, פעם
+ * כ"מקור" ופעם כ"העתק נאמן למקור". הקבצים שונים בבתים שלהם, אבל מדובר
+ * באותו מסמך חשבונאי — וספירה כפולה מנפחת את ההכנסות.
+ */
+async function sameDocumentExists(args: {
+  businessId: string;
+  direction: 'INCOME' | 'EXPENSE';
+  number: string;
+  issueDate: Date;
+  totalAgorot: number;
+}): Promise<boolean> {
+  if (!args.number || args.number === 'ללא מספר') return false;
+  const existing = await prisma.document.findFirst({
+    where: {
+      businessId: args.businessId,
+      direction: args.direction,
+      number: args.number,
+      issueDate: args.issueDate,
+      totalAgorot: args.totalAgorot,
+      status: { not: 'VOID' },
+    },
+    select: { id: true },
+  });
+  return Boolean(existing);
+}
+
+/**
  * קריאת המסמך מהטקסט שבתוכו. מחזיר null אם אין טקסט, אם התבנית אינה מוכרת,
  * או אם הסכומים אינם מסתדרים — בכל אלה עדיף לשלוח ל-AI מאשר לנחש.
  * דורש קובץ על הדיסק, ולכן רלוונטי רק בהרצה מקומית.
@@ -110,6 +139,22 @@ export async function ingestDocument(args: {
     method = 'ai';
     const ai = await extractDocument({ data, mimeType, direction, ownVatId: business.vatId });
     result = { extracted: ai.extracted, raw: ai.raw, direction };
+  }
+
+  // בדיקה שנייה, אחרי שהמסמך נקרא: אותו מסמך יכול להגיע בקובץ אחר לגמרי.
+  const amounts = result.extracted;
+  if (
+    amounts.documentNumber &&
+    amounts.issueDate &&
+    (await sameDocumentExists({
+      businessId: business.id,
+      direction,
+      number: amounts.documentNumber,
+      issueDate: new Date(amounts.issueDate),
+      totalAgorot: Math.round((amounts.totalAmount ?? 0) * 100),
+    }))
+  ) {
+    return { status: 'duplicate' };
   }
 
   const key = await saveBytes(data, mimeType, extension);
