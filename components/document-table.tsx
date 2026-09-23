@@ -80,7 +80,11 @@ export function DocumentTable({
               return (
                 <Fragment key={doc.id}>
                   <tr className="border-b border-[var(--border)] last:border-0 hover:bg-ink-50/60 dark:hover:bg-ink-900/40">
-                    <td className="whitespace-nowrap px-4 py-2.5 ltr-num text-[var(--muted)]">{formatDate(doc.issueDate)}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 ltr-num text-[var(--muted)]">{formatDate(doc.issueDate)}
+                      {doc.reportDate.toISOString().slice(0, 10) !== doc.issueDate.toISOString().slice(0, 10) && (
+                        // תאריך ההפקה לתצוגה; התקופה נקבעת לפי מועד התשלום
+                        <span className="block text-[10px] text-[var(--muted)]">שולם {formatDate(doc.reportDate)}</span>
+                      )}</td>
                     <td className="px-4 py-2.5">
                       <div className="font-medium">{doc.counterpartyName}</div>
                       {doc.counterpartyVatId && <div className="ltr-num text-xs text-[var(--muted)]">{doc.counterpartyVatId}</div>}

@@ -49,6 +49,8 @@ export type ProviderDocument = {
   documentKind: 'TAX_INVOICE' | 'TAX_INVOICE_RECEIPT' | 'RECEIPT' | 'CREDIT_INVOICE' | 'OTHER_DOC';
   isCredit: boolean;
   issueDate: Date;
+  /** מועד קבלת התשלום. על בסיס מזומן זה התאריך שקובע את התקופה, לא תאריך ההפקה. */
+  paymentDate: Date;
   customerName: string;
   customerVatId: string | null;
   customerEmail: string | null;

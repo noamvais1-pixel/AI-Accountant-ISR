@@ -2,6 +2,7 @@ import { prisma } from '../db';
 import { getInvoiceProvider } from '../invoicing';
 import { cardcomConfigFromEnv, listInstallmentTransactions } from '../cardcom/client';
 import { syncSchedule } from './recognition';
+import { assignToPeriod } from './documents';
 import { vatRateBpAt } from '../vat';
 import type { DocType } from '@prisma/client';
 import type { ProviderDocument } from '../invoicing/provider';
@@ -41,7 +42,8 @@ export function toDocumentData(businessId: string, doc: ProviderDocument) {
     docType,
     status: 'CONFIRMED' as const,
     issueDate: doc.issueDate,
-    reportDate: doc.issueDate,
+    // התקופה נקבעת לפי מועד התשלום, לא לפי תאריך ההפקה
+    reportDate: doc.paymentDate,
     number: doc.documentNumber,
     counterpartyName: doc.customerName,
     counterpartyVatId: doc.customerVatId,
@@ -75,6 +77,9 @@ export async function syncCardcomDocuments(args: {
 }): Promise<SyncResult> {
   const result: SyncResult = { fetched: 0, created: 0, updated: 0, skipped: 0, errors: [] };
   const provider = getInvoiceProvider();
+  const business = await prisma.business.findUniqueOrThrow({ where: { id: args.businessId } });
+  const place = (documentId: string, reportDate: Date) =>
+    assignToPeriod({ businessId: args.businessId, documentId, reportDate, frequency: business.vatFrequency });
 
   const documents = await provider.listDocuments({ fromDate: args.fromDate, toDate: args.toDate });
   result.fetched = documents.length;
@@ -130,6 +135,7 @@ export async function syncCardcomDocuments(args: {
                 where: { id: sameDocument.id },
                 data: {
                   status: 'CONFIRMED',
+                  reportDate: doc.paymentDate,
                   netAgorot: doc.netAgorot,
                   vatAgorot: doc.vatAgorot,
                   totalAgorot: doc.totalAgorot,
@@ -138,6 +144,8 @@ export async function syncCardcomDocuments(args: {
                   notes: alreadyNoted ? sameDocument.notes : [sameDocument.notes, note].filter(Boolean).join(' · '),
                 },
               });
+              await place(sameDocument.id, doc.paymentDate);
+              await syncSchedule(sameDocument.id);
               result.updated++;
               continue;
             }
@@ -154,9 +162,13 @@ export async function syncCardcomDocuments(args: {
           continue;
         }
         await prisma.document.update({ where: { id: existing.id }, data });
+        await place(existing.id, data.reportDate);
+        await syncSchedule(existing.id);
         result.updated++;
       } else {
-        await prisma.document.create({ data });
+        const created = await prisma.document.create({ data, select: { id: true } });
+        await place(created.id, data.reportDate);
+        await syncSchedule(created.id);
         result.created++;
       }
     } catch (error) {

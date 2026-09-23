@@ -228,6 +228,7 @@ export type CardcomDocument = {
   InvoiceType: number;
   InvoiceDate: string;
   InvoiceDateOnly: string;
+  ValueDate: string; // תאריך ערך — מועד התשלום
   Cust_Name: string;
   Comp_ID: string;
   Email: string;

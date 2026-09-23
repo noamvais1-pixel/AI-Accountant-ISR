@@ -7,11 +7,12 @@ import { roundHalfAwayFromZero } from './money';
  * ההכנסה מוכרת לפי מועד הפירעון של כל תשלום. שלושה כללים שאסור להפר:
  * - סכום כל התשלומים שווה בדיוק לסכום המסמך — אגורה לא נעלמת ולא נולדת.
  * - נטו ומע"מ מתפצלים באותו יחס כמו במסמך, ומסתכמים בדיוק לנטו ולמע"מ שלו.
- * - התשלום הראשון חל ביום ההפקה; כל הבאים — חודש אחרי קודמו.
+ * - התשלום הראשון חל במועד התשלום (תאריך הדיווח); כל הבאים — חודש אחרי קודמו.
  */
 
 export type InstallmentSource = {
-  issueDate: Date;
+  /** מועד התשלום הראשון — תאריך הדיווח של המסמך, לא בהכרח תאריך ההפקה. */
+  reportDate: Date;
   netAgorot: number;
   vatAgorot: number;
   totalAgorot: number;
@@ -70,7 +71,7 @@ export function buildSchedule(doc: InstallmentSource): ScheduledInstallment[] | 
 
   return totals.map((totalAgorot, i) => ({
     seq: i + 1,
-    dueDate: addMonthsUtc(doc.issueDate, i),
+    dueDate: addMonthsUtc(doc.reportDate, i),
     netAgorot: nets[i],
     vatAgorot: vats[i],
     totalAgorot,

@@ -58,6 +58,9 @@ export function mapCardcomDocument(doc: CardcomDocument): ProviderDocument | nul
     documentKind: entry.kind,
     isCredit,
     issueDate: parseCardcomDate(doc.InvoiceDateOnly || doc.InvoiceDate),
+    // ValueDate הוא תאריך הערך של התשלום. חשבונית שהופקה באיחור נושאת תאריך
+    // הפקה מאוחר, אבל הכסף התקבל ביום הערך — ושם היא שייכת.
+    paymentDate: doc.ValueDate ? parseCardcomDate(doc.ValueDate) : parseCardcomDate(doc.InvoiceDateOnly || doc.InvoiceDate),
     customerName: doc.Cust_Name || 'לקוח ללא שם',
     customerVatId: doc.Comp_ID?.trim() || null,
     customerEmail: doc.Email?.trim() || null,

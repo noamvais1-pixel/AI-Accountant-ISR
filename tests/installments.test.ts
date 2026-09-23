@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildSchedule, addMonthsUtc } from '../lib/installments';
 
 const base = {
-  issueDate: new Date('2026-01-13T00:00:00Z'),
+  reportDate: new Date('2026-01-13T00:00:00Z'),
   netAgorot: 1290000, vatAgorot: 0, totalAgorot: 1290000,
   installments: 12, installmentAgorot: null, firstInstallmentAgorot: null,
 };
@@ -15,7 +15,7 @@ test('12 תשלומים מסתכמים בדיוק לסכום המסמך', () => 
   assert.equal(s[0].totalAgorot, 107500, '12,900 / 12 = 1,075.00');
 });
 
-test('מועדי הפירעון: הראשון ביום ההפקה, כל הבאים חודש אחרי קודמו', () => {
+test('מועדי הפירעון: הראשון במועד התשלום, כל הבאים חודש אחרי קודמו', () => {
   const s = buildSchedule(base)!;
   assert.equal(s[0].dueDate.toISOString().slice(0, 10), '2026-01-13');
   assert.equal(s[1].dueDate.toISOString().slice(0, 10), '2026-02-13');
@@ -30,7 +30,7 @@ test('סכום שאינו מתחלק — השארית נופלת על התשלו
 test('נטו ומע"מ מתפצלים לפי יחס המסמך ומסתכמים בדיוק', () => {
   // 16,880 = 14,305.08 + 2,574.92 מע"מ (18%), 12 תשלומים כפי שקארדקום חייבה
   const s = buildSchedule({
-    issueDate: new Date('2026-09-08T00:00:00Z'),
+    reportDate: new Date('2026-09-08T00:00:00Z'),
     netAgorot: 1430508, vatAgorot: 257492, totalAgorot: 1688000,
     installments: 12, installmentAgorot: 140600, firstInstallmentAgorot: 141400,
   })!;
@@ -58,4 +58,11 @@ test('הוספת חודש נצמדת לסוף חודש קצר', () => {
   assert.equal(addMonthsUtc(new Date('2026-01-31T00:00:00Z'), 1).toISOString().slice(0, 10), '2026-02-28');
   assert.equal(addMonthsUtc(new Date('2026-01-31T00:00:00Z'), 2).toISOString().slice(0, 10), '2026-03-31');
   assert.equal(addMonthsUtc(new Date('2026-11-13T00:00:00Z'), 2).toISOString().slice(0, 10), '2027-01-13', 'חוצה שנה');
+});
+
+test('חשבונית שהופקה באיחור נפרסת ממועד התשלום, לא מתאריך ההפקה', () => {
+  // הופקה ב-15/09, שולמה ב-08/09 — התשלום הראשון חל ב-08/09
+  const s = buildSchedule({ ...base, reportDate: new Date('2026-09-08T00:00:00Z'), installments: 3 })!;
+  assert.equal(s[0].dueDate.toISOString().slice(0, 10), '2026-09-08');
+  assert.equal(s[2].dueDate.toISOString().slice(0, 10), '2026-11-08');
 });
