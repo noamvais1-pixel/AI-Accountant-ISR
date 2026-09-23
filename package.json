@@ -14,7 +14,8 @@
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "import": "tsx scripts/import.ts",
-    "migrate:cloud": "tsx scripts/migrate-to-cloud.ts"
+    "migrate:cloud": "tsx scripts/migrate-to-cloud.ts",
+    "db:secure": "psql \"$DIRECT_URL\" -f prisma/secure.sql"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

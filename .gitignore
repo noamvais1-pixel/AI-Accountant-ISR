@@ -40,3 +40,5 @@ Thumbs.db
 # קבצים זמניים
 *.log
 tmp/
+.vercel
+.env*
