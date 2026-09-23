@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { getActiveBusinessOrNull } from '@/lib/services/business';
 import { Panel, Alert, Stat, Badge } from '@/components/ui';
 import { buildVatReport } from '@/lib/reports/vat-report';
+import { documentsRecognizedInRange } from '@/lib/services/recognition';
 import { buildPeriod, periodForDate, periodsForYear, previousPeriod } from '@/lib/periods';
 import { formatILS } from '@/lib/money';
 import { formatDate } from '@/lib/format';
@@ -47,13 +48,8 @@ export default async function VatReportPage({
   const periodNo = params.period ? Number(params.period) : defaultPeriod.periodNo;
   const period = buildPeriod(year, periodNo, business.vatFrequency);
 
-  const documents = await prisma.document.findMany({
-    where: {
-      businessId: business.id,
-      reportDate: { gte: period.startDate, lte: period.endDate },
-    },
-    orderBy: { issueDate: 'asc' },
-  });
+  // מסמך בתשלומים נכנס לדוח רק בחלק שחל בתקופה
+  const documents = await documentsRecognizedInRange(business.id, period.startDate, period.endDate);
 
   const report = buildVatReport(period, documents);
 

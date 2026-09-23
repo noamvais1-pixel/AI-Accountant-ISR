@@ -4,6 +4,7 @@ import { toAgorot } from '../money';
 import { normalizeVatId } from '../israeli-id';
 import { buildPeriod, periodForDate, type VatFrequency } from '../periods';
 import type { ExtractedDocument } from '../ocr/schema';
+import { syncSchedule } from './recognition';
 import type { DocType, Prisma } from '@prisma/client';
 
 /** ממפה את סוג המסמך שה-AI זיהה לסוג במערכת. */
@@ -114,6 +115,9 @@ export async function createDraftFromExtraction(args: {
     },
     select: { id: true },
   });
+
+  // מסמך בתשלומים מקבל לוח פירעון; לאחרים זו פעולה ריקה
+  await syncSchedule(document.id);
 
   return document;
 }

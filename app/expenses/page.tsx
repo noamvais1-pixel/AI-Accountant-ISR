@@ -8,6 +8,7 @@ import { ManualEntryToggle } from './manual-entry';
 import { formatILS } from '@/lib/money';
 import { buildPeriod, periodForDate } from '@/lib/periods';
 import { PeriodPicker, readPeriodParams } from '@/components/period-picker';
+import { documentsRecognizedInRange } from '@/lib/services/recognition';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,12 @@ export default async function ExpensesPage({
   const params = await searchParams;
   const current = periodForDate(new Date(), business.vatFrequency);
   const { year, periodNo } = readPeriodParams(params, current);
+  const range = periodNo
+    ? buildPeriod(year, periodNo, business.vatFrequency)
+    : { startDate: new Date(Date.UTC(year, 0, 1)), endDate: new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999)) };
+  // הכרטיסים מסכמים סכומים מוכרים — מסמך בתשלומים תורם רק את התשלומים שחלים בטווח.
+  // הטבלה למטה מציגה מסמכים לפי תאריך ההפקה, ולכן שני המספרים יכולים להיבדל.
+  const recognized = await documentsRecognizedInRange(business.id, range.startDate, range.endDate);
   const periodLabel = periodNo
     ? buildPeriod(year, periodNo, business.vatFrequency).label
     : `כל שנת ${year}`;
@@ -52,7 +59,7 @@ export default async function ExpensesPage({
     orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
   });
 
-  const totals = confirmed.reduce(
+  const totals = recognized.filter((d) => d.direction === 'EXPENSE').reduce(
     (acc, doc) => {
       if (doc.status === 'VOID') return acc;
       const s = doc.isCredit ? -1 : 1;

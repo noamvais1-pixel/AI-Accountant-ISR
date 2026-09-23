@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { getActiveBusinessOrNull } from '@/lib/services/business';
 import { Panel, Alert, Stat, Badge, EmptyState } from '@/components/ui';
 import { buildVatReport } from '@/lib/reports/vat-report';
+import { documentsRecognizedInRange } from '@/lib/services/recognition';
 import { periodForDate, previousPeriod } from '@/lib/periods';
 import { formatILS } from '@/lib/money';
 import { formatDate, DOC_TYPE_LABELS } from '@/lib/format';
@@ -37,12 +38,8 @@ export default async function DashboardPage() {
   const reporting = previousPeriod(current, business.vatFrequency);
 
   const [currentDocs, reportingDocs, drafts, recent] = await Promise.all([
-    prisma.document.findMany({
-      where: { businessId: business.id, reportDate: { gte: current.startDate, lte: current.endDate } },
-    }),
-    prisma.document.findMany({
-      where: { businessId: business.id, reportDate: { gte: reporting.startDate, lte: reporting.endDate } },
-    }),
+    documentsRecognizedInRange(business.id, current.startDate, current.endDate),
+    documentsRecognizedInRange(business.id, reporting.startDate, reporting.endDate),
     prisma.document.count({ where: { businessId: business.id, status: 'DRAFT' } }),
     prisma.document.findMany({
       where: { businessId: business.id, status: { not: 'DRAFT' } },

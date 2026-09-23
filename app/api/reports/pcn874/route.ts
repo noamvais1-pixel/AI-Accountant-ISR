@@ -1,7 +1,7 @@
-import { prisma } from '@/lib/db';
 import { apiUser } from '@/lib/auth/server';
 import { getActiveBusiness } from '@/lib/services/business';
 import { buildVatReport } from '@/lib/reports/vat-report';
+import { documentsRecognizedInRange } from '@/lib/services/recognition';
 import { generatePcn874 } from '@/lib/reports/pcn874';
 import { buildPeriod } from '@/lib/periods';
 
@@ -23,13 +23,8 @@ export async function GET(request: Request) {
     }
 
     const period = buildPeriod(year, periodNo, business.vatFrequency);
-    const documents = await prisma.document.findMany({
-      where: {
-        businessId: business.id,
-        reportDate: { gte: period.startDate, lte: period.endDate },
-      },
-      orderBy: { issueDate: 'asc' },
-    });
+    // חשבונית בתשלומים מדווחת בכל תקופה בסכום התשלומים שחלו בה, תחת אותו מספר
+    const documents = await documentsRecognizedInRange(business.id, period.startDate, period.endDate);
 
     const report = buildVatReport(period, documents);
     const { content } = generatePcn874({ vatId: business.vatId, period, report, documents });

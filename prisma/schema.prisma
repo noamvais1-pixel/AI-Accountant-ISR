@@ -210,6 +210,9 @@ model Document {
   vatPeriodId String?
   vatPeriod   VatPeriod? @relation(fields: [vatPeriodId], references: [id], onDelete: SetNull)
 
+  // לוח התשלומים — קיים רק למסמך בתשלומים
+  schedule DocumentInstallment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -255,4 +258,31 @@ model VatPeriod {
 
   @@unique([businessId, year, periodNo])
   @@map("vat_periods")
+}
+
+// ---------------------------------------------------------------------------
+// לוח תשלומים
+// ---------------------------------------------------------------------------
+
+/**
+ * תשלום אחד מתוך עסקה בתשלומים.
+ * המסמך נשאר שלם — מספר אחד, סכום אחד, תאריך הפקה אחד — וזה מה שמופיע בקובץ
+ * PCN874. לצורך שיוך לתקופות, לעומת זאת, ההכנסה מוכרת כשהכסף מגיע: כל תשלום
+ * נופל לתקופה של מועד הפירעון שלו. סכום כל התשלומים שווה בדיוק לסכום המסמך.
+ */
+model DocumentInstallment {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  seq     Int // 1..N
+  dueDate DateTime // מועד הפירעון של התשלום הזה
+
+  netAgorot   Int
+  vatAgorot   Int
+  totalAgorot Int
+
+  @@unique([documentId, seq])
+  @@index([dueDate])
+  @@map("document_installments")
 }

@@ -11,6 +11,7 @@ ALTER TABLE public.businesses  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contacts    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.documents   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vat_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.document_installments ENABLE ROW LEVEL SECURITY;
 
 -- שכבה שנייה: שלילת ההרשאות מהתפקידים שה-REST משתמש בהם.
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;

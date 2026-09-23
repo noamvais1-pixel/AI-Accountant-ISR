@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { getInvoiceProvider } from '../invoicing';
 import { cardcomConfigFromEnv, listInstallmentTransactions } from '../cardcom/client';
+import { syncSchedule } from './recognition';
 import { vatRateBpAt } from '../vat';
 import type { DocType } from '@prisma/client';
 import type { ProviderDocument } from '../invoicing/provider';
@@ -219,6 +220,7 @@ export async function enrichInstallments(args: {
         firstInstallmentAgorot: t.firstAgorot !== t.constAgorot ? t.firstAgorot : null,
       },
     });
+    await syncSchedule(candidates[0].id);
     matched++;
   }
   return { transactions: transactions.length, matched };

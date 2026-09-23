@@ -105,6 +105,19 @@ export function DocumentForm({
           <input name="allocationNumber" defaultValue={document?.allocationNumber ?? ''} className={`${field} ltr-num`} inputMode="numeric" />
         </div>
         <div>
+          <label className={label}>
+            תשלומים <span className="opacity-60">(עסקת אשראי)</span>
+          </label>
+          <input
+            name="installments"
+            type="number"
+            min={1}
+            max={36}
+            defaultValue={document?.installments ?? 1}
+            className={`${field} ltr-num`}
+          />
+        </div>
+        <div>
           <label className={label}>סיווג</label>
           <input name="category" defaultValue={document?.category ?? ''} className={field} placeholder="דלק, משרדיות…" />
         </div>

@@ -11,6 +11,7 @@ import { isValidIsraeliId, normalizeVatId } from '@/lib/israeli-id';
 import { buildPeriod } from '@/lib/periods';
 import { getInvoiceProvider } from '@/lib/invoicing';
 import { backupPending } from '@/lib/drive/backup';
+import { syncSchedule } from '@/lib/services/recognition';
 import type { DocType, Direction, InputKind, LegalType, VatFrequency, VatTreatment } from '@prisma/client';
 
 export type ActionResult = { ok: true; message?: string; data?: unknown } | { ok: false; error: string };
@@ -139,6 +140,10 @@ export async function saveDocument(_prev: ActionResult | null, form: FormData): 
       totalAgorot: amounts.totalAgorot,
       vatRateBp: rateBp,
       isCredit,
+      // מספר תשלומים מהטופס; שינוי מאפס את הסכום הקבוע כדי שייחשב מחדש
+      installments: (num(form, 'installments') ?? 1) > 1 ? Math.trunc(num(form, 'installments')!) : null,
+      installmentAgorot: null,
+      firstInstallmentAgorot: null,
       vatTreatment,
       inputKind: direction === 'EXPENSE' ? ((str(form, 'inputKind') || 'OTHER') as InputKind) : null,
       deductibleBp,
@@ -172,6 +177,7 @@ export async function saveDocument(_prev: ActionResult | null, form: FormData): 
       reportDate,
       frequency: business.vatFrequency,
     });
+    await syncSchedule(documentId);
 
     // לומדים את סיווג הספק לפעם הבאה
     if (direction === 'EXPENSE' && counterpartyVatId) {
