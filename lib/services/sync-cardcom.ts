@@ -1,5 +1,6 @@
 import { prisma } from '../db';
 import { getInvoiceProvider } from '../invoicing';
+import { cardcomConfigFromEnv, listInstallmentTransactions } from '../cardcom/client';
 import { vatRateBpAt } from '../vat';
 import type { DocType } from '@prisma/client';
 import type { ProviderDocument } from '../invoicing/provider';
@@ -167,5 +168,58 @@ export async function syncCardcomDocuments(args: {
     data: { cardcomLastSyncAt: new Date() },
   });
 
+  // תשלומים אינם חלק מהמסמך בקארדקום; הם נלמדים מעסקת האשראי
+  try {
+    await enrichInstallments(args);
+  } catch (error) {
+    result.errors.push(`תשלומים: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   return result;
+}
+
+/**
+ * מצמיד מספר תשלומים למסמכים לפי עסקאות האשראי.
+ *
+ * אין מפתח משותף בין מסמך לעסקה (האסמכתא במסמך אינה מספר העסקה), ולכן
+ * ההתאמה היא לפי סכום זהה באותו יום. זה תופס את המקרה הרגיל — מסמך שהופק
+ * בזמן החיוב — ומפספס בכוונה כל מקרה מעורפל, במקום לנחש.
+ */
+export async function enrichInstallments(args: {
+  businessId: string;
+  fromDate: Date;
+  toDate: Date;
+}): Promise<{ transactions: number; matched: number }> {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const transactions = await listInstallmentTransactions(cardcomConfigFromEnv(), {
+    fromDate: iso(args.fromDate),
+    toDate: iso(args.toDate),
+  });
+  let matched = 0;
+  for (const t of transactions) {
+    const day = new Date(`${t.date}T00:00:00.000Z`);
+    const next = new Date(day.getTime() + 24 * 3600 * 1000);
+    const candidates = await prisma.document.findMany({
+      where: {
+        businessId: args.businessId,
+        direction: 'INCOME',
+        totalAgorot: t.amountAgorot,
+        issueDate: { gte: day, lt: next },
+        status: { not: 'VOID' },
+      },
+      select: { id: true },
+    });
+    // התאמה אחת בלבד: שני מסמכים באותו סכום באותו יום = לא יודעים איזה
+    if (candidates.length !== 1) continue;
+    await prisma.document.update({
+      where: { id: candidates[0].id },
+      data: {
+        installments: t.installments,
+        installmentAgorot: t.constAgorot,
+        firstInstallmentAgorot: t.firstAgorot !== t.constAgorot ? t.firstAgorot : null,
+      },
+    });
+    matched++;
+  }
+  return { transactions: transactions.length, matched };
 }

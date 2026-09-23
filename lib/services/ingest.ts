@@ -102,6 +102,7 @@ async function textExtraction(
       vatAmount: parsed.vatAmount,
       totalAmount: parsed.totalAmount,
       vatRatePercent: parsed.vatRatePercent,
+      installments: parsed.installments,
       categoryGuess: null,
       lineItems: null,
       // הטקסט הוא המקור עצמו ולא פרשנות שלו.

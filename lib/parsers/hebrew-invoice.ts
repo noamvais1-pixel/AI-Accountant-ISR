@@ -27,6 +27,8 @@ export type ParsedInvoice = {
   vatRatePercent: number | null;
   /** האם המסמך הופק על ידי העסק (הכנסה) או התקבל מספק (הוצאה). */
   direction: 'INCOME' | 'EXPENSE';
+  /** מספר תשלומים בעסקת אשראי, אם צוין. null = לא צוין או תשלום אחד. */
+  installments: number | null;
   warnings: string[];
 };
 
@@ -156,6 +158,13 @@ export function parseHebrewInvoice(
   if (!counterpartyName) warnings.push('לא זוהה שם הצד השני לעסקה');
   if (net === null && total === null) warnings.push('לא זוהו סכומים');
 
+  // "מס' תשלומים: 12" — הסכום שבמסמך מגיע לאורך חודשים, לא ביום ההפקה.
+  // "פרטי תשלומים" (כותרת עמודה) אינו סימן לתשלומים, ולכן דורשים מספר.
+  const installmentsMatch = text.match(/מס'?\s*תשלומים\s*:?\s*(\d{1,2})|(\d{1,2})\s*תשלומים\b/);
+  const installmentsRaw = installmentsMatch ? Number(installmentsMatch[1] ?? installmentsMatch[2]) : null;
+  const installments = installmentsRaw && installmentsRaw > 1 ? installmentsRaw : null;
+  if (installments) warnings.push(`עסקה ב-${installments} תשלומים — הסכום המלא מופיע במסמך`);
+
   /**
    * מסמך בלי שורת מע"מ הוא מסמך בלי מע"מ — לא מסמך שהמע"מ שלו לא נמצא.
    *
@@ -183,6 +192,7 @@ export function parseHebrewInvoice(
     totalAmount,
     vatRatePercent,
     direction,
+    installments,
     warnings,
   };
 }

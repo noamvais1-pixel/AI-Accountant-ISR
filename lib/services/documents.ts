@@ -97,6 +97,8 @@ export async function createDraftFromExtraction(args: {
       totalAgorot: amounts.totalAgorot,
       vatRateBp: rateBp,
       isCredit: extraction.isCredit,
+      // מספר תשלומים נשמר כמידע; הסכום נשאר הסכום המלא שבמסמך
+      installments: extraction.installments && extraction.installments > 1 ? extraction.installments : null,
       vatTreatment: amounts.vatAgorot > 0 ? 'STANDARD' : 'NO_VAT',
       inputKind: direction === 'EXPENSE' ? inputKind : null,
       deductibleBp: direction === 'EXPENSE' ? deductibleBp : 10000,

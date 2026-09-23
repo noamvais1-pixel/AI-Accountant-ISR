@@ -144,3 +144,26 @@ test('שעה ותאריך שיושבים בשורת הלקוח אינם נכנס
   assert.equal(r.totalAmount, 197);
   assert.equal(validateAmounts(r), null);
 });
+
+const INSTALLMENTS = `
+                דנה כהן
+                עוסק פטור 520000472
+מקור                                    קבלה 50161
+13/01/2026                              לכבוד:
+                                        לקוחה ראשונה
+                                        514678150
+                   פרטי תשלומים
+             ₪12,900.00   13/01/2026   4ספרות אחרונות ,1842 :סוג כרטיס,Visa :   אשראי
+                                       סוג עסקה :תשלומים ,מס' תשלומים12 :
+         ₪12,900.00        סה"כ
+`;
+
+test('מספר תשלומים נקרא מהמסמך, וכותרת "פרטי תשלומים" לבדה אינה נחשבת', () => {
+  const r = parseHebrewInvoice(INSTALLMENTS, OWN);
+  assert.ok(r);
+  assert.equal(r.installments, 12);
+  assert.equal(r.totalAmount, 12900, 'הסכום המלא נשאר כפי שהוא במסמך');
+  assert.ok(r.warnings.some((w) => w.includes('12 תשלומים')));
+  const single = parseHebrewInvoice(EXEMPT_RECEIPT, OWN);
+  assert.equal(single?.installments, null, 'בלי "מס\' תשלומים" אין תשלומים');
+});

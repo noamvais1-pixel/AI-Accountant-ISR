@@ -302,3 +302,51 @@ export async function cancelDocument(
 
   return { newDocumentNumber: json.NewDocumentNumber, newDocumentType: json.NewDocumentType };
 }
+
+// ---------------------------------------------------------------------------
+// עסקאות אשראי בתשלומים
+// ---------------------------------------------------------------------------
+
+export type CardcomInstallmentTransaction = {
+  amountAgorot: number;
+  date: string; // YYYY-MM-DD
+  installments: number;
+  firstAgorot: number;
+  constAgorot: number;
+};
+
+/**
+ * מסמכי קארדקום אינם נושאים את מספר התשלומים — רק העסקה עצמה. ה-endpoint הזה
+ * משתמש במוסכמות אחרות מזה של המסמכים: תאריכים ב-DDMMYYYY, ו-Page/Page_size.
+ */
+export async function listInstallmentTransactions(
+  config: CardcomConfig,
+  args: { fromDate: string; toDate: string },
+): Promise<CardcomInstallmentTransaction[]> {
+  const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}${iso.slice(5, 7)}${iso.slice(0, 4)}`;
+  type Row = { Amount: number; CreateDate: string; NumberOfPayments: number; FirstPaymentAmount: number; ConstPaymentAmount: number };
+  const out: CardcomInstallmentTransaction[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const json = await call<CardcomResponse & { Tranzactions?: Row[] }>(config, 'Transactions/ListTransactions', {
+      TerminalNumber: config.terminalNumber,
+      FromDate: ddmmyyyy(args.fromDate),
+      ToDate: ddmmyyyy(args.toDate),
+      Page: page,
+      Page_size: 500,
+    });
+    const rows = json.Tranzactions ?? [];
+    for (const r of rows) {
+      if (Number(r.NumberOfPayments) > 1) {
+        out.push({
+          amountAgorot: Math.round(Number(r.Amount) * 100),
+          date: String(r.CreateDate).slice(0, 10),
+          installments: Number(r.NumberOfPayments),
+          firstAgorot: Math.round(Number(r.FirstPaymentAmount) * 100),
+          constAgorot: Math.round(Number(r.ConstPaymentAmount) * 100),
+        });
+      }
+    }
+    if (rows.length < 500) break;
+  }
+  return out;
+}

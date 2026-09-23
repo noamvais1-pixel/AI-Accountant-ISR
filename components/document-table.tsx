@@ -90,6 +90,12 @@ export function DocumentTable({
                         <span className="text-xs text-[var(--muted)]">{DOC_TYPE_LABELS[doc.docType]}</span>
                         <span className="ltr-num text-xs">{doc.number}</span>
                         {doc.isCredit && <Badge tone="red">זיכוי</Badge>}
+                        {doc.installments && doc.installments > 1 && (
+                          <Badge tone="blue">
+                            {doc.installments} תשלומים
+                            {doc.installmentAgorot ? ` · ${formatILS(doc.installmentAgorot)} לתשלום` : ''}
+                          </Badge>
+                        )}
                         <DeductibleBadge document={doc} />
                       </div>
                       {doc.category && <div className="text-xs text-[var(--muted)]">{doc.category}</div>}

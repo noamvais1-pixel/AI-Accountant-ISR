@@ -177,6 +177,13 @@ model Document {
 
   isCredit Boolean @default(false) // חשבונית זיכוי — נספרת בסימן שלילי בדוחות
 
+  // --- תשלומים ---
+  // עסקת אשראי בתשלומים: הסכום המלא מופיע במסמך, אבל הכסף מגיע לאורך חודשים.
+  // נשמר כמידע; ההחלטה איך זה משפיע על שיוך לתקופות היא של הנהלת החשבונות.
+  installments           Int? // מספר תשלומים (null או 1 = תשלום אחד)
+  installmentAgorot      Int? // סכום תשלום קבוע
+  firstInstallmentAgorot Int? // התשלום הראשון, כשהוא שונה מהקבוע
+
   // --- טיפול מע"מ ---
   vatTreatment VatTreatment @default(STANDARD)
   inputKind    InputKind? // רק להוצאות: ציוד או שוטף

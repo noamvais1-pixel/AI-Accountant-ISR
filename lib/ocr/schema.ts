@@ -24,6 +24,7 @@ export const ExtractedDocumentSchema = z.object({
   vatAmount: z.number().nullable().describe('סכום המע"מ'),
   totalAmount: z.number().nullable().describe('הסכום הכולל לתשלום'),
   vatRatePercent: z.number().nullable().describe('שיעור המע"מ באחוזים, למשל 18'),
+  installments: z.number().int().nullable().describe('מספר תשלומים בעסקת אשראי, אם צוין ("מס\' תשלומים: 12"). null אם לא צוין'),
 
   categoryGuess: z.string().nullable().describe('סיווג הוצאה מוצע בעברית'),
   lineItems: z
@@ -55,6 +56,7 @@ export const GEMINI_RESPONSE_SCHEMA = {
     vatAmount: { type: 'number', nullable: true },
     totalAmount: { type: 'number', nullable: true },
     vatRatePercent: { type: 'number', nullable: true },
+    installments: { type: 'integer', nullable: true },
     categoryGuess: { type: 'string', nullable: true },
     lineItems: {
       type: 'array',
