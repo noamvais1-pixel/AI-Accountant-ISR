@@ -6,12 +6,13 @@ import { Panel, Alert, Stat } from '@/components/ui';
 import { DocumentTable } from '@/components/document-table';
 import { SyncPanel } from './sync-panel';
 import { formatILS } from '@/lib/money';
-import { periodForDate } from '@/lib/periods';
+import { buildPeriod, periodForDate } from '@/lib/periods';
+import { PeriodPicker, readPeriodParams } from '@/components/period-picker';
 import { toDateInputValue } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
-export default async function IncomePage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
+export default async function IncomePage({ searchParams }: { searchParams: Promise<{ year?: string; period?: string }> }) {
   const business = await getActiveBusinessOrNull();
   if (!business) {
     return (
@@ -24,12 +25,19 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
     );
   }
 
-  const { period: periodParam } = await searchParams;
+  const params = await searchParams;
   const current = periodForDate(new Date(), business.vatFrequency);
-  const [year, periodNo] = periodParam ? periodParam.split('-').map(Number) : [current.year, current.periodNo];
+  const { year, periodNo } = readPeriodParams(params, current);
+  const periodLabel = periodNo
+    ? buildPeriod(year, periodNo, business.vatFrequency).label
+    : `כל שנת ${year}`;
 
   const documents = await prisma.document.findMany({
-    where: { businessId: business.id, direction: 'INCOME', vatPeriod: { year, periodNo } },
+    where: {
+      businessId: business.id,
+      direction: 'INCOME',
+      vatPeriod: periodNo ? { year, periodNo } : { year },
+    },
     orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
   });
 
@@ -71,13 +79,20 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
         defaultTo={toDateInputValue(new Date())}
       />
 
+      <PeriodPicker
+        year={year}
+        periodNo={periodNo}
+        frequency={business.vatFrequency}
+        action="/income"
+      />
+
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="עסקאות חייבות בתקופה" value={formatILS(totals.net)} />
+        <Stat label="עסקאות חייבות" value={formatILS(totals.net)} />
         <Stat label="מע&quot;מ עסקאות" value={formatILS(totals.vat)} tone="brand" />
         <Stat label="עסקאות פטורות / אפס" value={formatILS(totals.exempt)} />
       </div>
 
-      <Panel title={`הכנסות — תקופה ${periodNo}/${year}`}>
+      <Panel title={`הכנסות — ${periodLabel}`}>
         <DocumentTable documents={documents} direction="INCOME" />
       </Panel>
     </div>

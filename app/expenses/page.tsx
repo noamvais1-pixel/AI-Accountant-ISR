@@ -6,7 +6,8 @@ import { ScanUploader } from './scan-uploader';
 import { DraftCard } from './draft-card';
 import { ManualEntryToggle } from './manual-entry';
 import { formatILS } from '@/lib/money';
-import { periodForDate } from '@/lib/periods';
+import { buildPeriod, periodForDate } from '@/lib/periods';
+import { PeriodPicker, readPeriodParams } from '@/components/period-picker';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export default async function ExpensesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ year?: string; period?: string }>;
 }) {
   const business = await getActiveBusinessOrNull();
   if (!business) {
@@ -28,11 +29,12 @@ export default async function ExpensesPage({
     );
   }
 
-  const { period: periodParam } = await searchParams;
+  const params = await searchParams;
   const current = periodForDate(new Date(), business.vatFrequency);
-  const [year, periodNo] = periodParam
-    ? periodParam.split('-').map(Number)
-    : [current.year, current.periodNo];
+  const { year, periodNo } = readPeriodParams(params, current);
+  const periodLabel = periodNo
+    ? buildPeriod(year, periodNo, business.vatFrequency).label
+    : `כל שנת ${year}`;
 
   const drafts = await prisma.document.findMany({
     where: { businessId: business.id, direction: 'EXPENSE', status: 'DRAFT' },
@@ -44,7 +46,8 @@ export default async function ExpensesPage({
       businessId: business.id,
       direction: 'EXPENSE',
       status: { not: 'DRAFT' },
-      vatPeriod: { year, periodNo },
+      // בלי תקופה מסוימת מציגים את כל השנה
+      vatPeriod: periodNo ? { year, periodNo } : { year },
     },
     orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
   });
@@ -86,13 +89,20 @@ export default async function ExpensesPage({
         </section>
       )}
 
+      <PeriodPicker
+        year={year}
+        periodNo={periodNo}
+        frequency={business.vatFrequency}
+        action="/expenses"
+      />
+
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="הוצאות לפני מע&quot;מ בתקופה" value={formatILS(totals.net)} />
+        <Stat label="הוצאות לפני מע&quot;מ" value={formatILS(totals.net)} />
         <Stat label="מע&quot;מ תשומות מוכר" value={formatILS(totals.deductibleVat)} tone="brand" />
         <Stat label="סה&quot;כ ששולם" value={formatILS(totals.total)} />
       </div>
 
-      <Panel title={`הוצאות מאושרות — תקופה ${periodNo}/${year}`}>
+      <Panel title={`הוצאות מאושרות — ${periodLabel}`}>
         <DocumentTable documents={confirmed} direction="EXPENSE" />
       </Panel>
     </div>
