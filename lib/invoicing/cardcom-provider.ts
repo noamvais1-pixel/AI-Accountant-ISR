@@ -11,6 +11,7 @@ import {
   type CardcomProduct,
 } from '../cardcom/client';
 import { toAgorot, toShekels } from '../money';
+import { resolvePaymentDate } from '../cardcom/payment-date';
 import { utcDate } from '../periods';
 import type {
   InvoiceProvider,
@@ -58,9 +59,13 @@ export function mapCardcomDocument(doc: CardcomDocument): ProviderDocument | nul
     documentKind: entry.kind,
     isCredit,
     issueDate: parseCardcomDate(doc.InvoiceDateOnly || doc.InvoiceDate),
-    // ValueDate הוא תאריך הערך של התשלום. חשבונית שהופקה באיחור נושאת תאריך
-    // הפקה מאוחר, אבל הכסף התקבל ביום הערך — ושם היא שייכת.
-    paymentDate: doc.ValueDate ? parseCardcomDate(doc.ValueDate) : parseCardcomDate(doc.InvoiceDateOnly || doc.InvoiceDate),
+    // מועד התשלום מהמסמך עצמו; הסנכרון משפר אותו למועד החיוב כשיש עסקת
+    // אשראי שמצביעה על המסמך. ראו lib/cardcom/payment-date.ts.
+    paymentDate: resolvePaymentDate({
+      invoiceDate: parseCardcomDate(doc.InvoiceDateOnly || doc.InvoiceDate),
+      valueDate: doc.ValueDate ? parseCardcomDate(doc.ValueDate) : null,
+      transferDate: doc.TransferDate ? parseCardcomDate(doc.TransferDate) : null,
+    }),
     customerName: doc.Cust_Name || 'לקוח ללא שם',
     customerVatId: doc.Comp_ID?.trim() || null,
     customerEmail: doc.Email?.trim() || null,

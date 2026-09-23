@@ -228,7 +228,8 @@ export type CardcomDocument = {
   InvoiceType: number;
   InvoiceDate: string;
   InvoiceDateOnly: string;
-  ValueDate: string; // תאריך ערך — מועד התשלום
+  ValueDate: string; // תאריך ערך; במסמך שהופק באיחור הוא שווה לתאריך ההפקה
+  TransferDate: string; // מועד העברה — מועד התשלום בהעברה בנקאית / תשלום חיצוני
   Cust_Name: string;
   Comp_ID: string;
   Email: string;
@@ -305,29 +306,38 @@ export async function cancelDocument(
 }
 
 // ---------------------------------------------------------------------------
-// עסקאות אשראי בתשלומים
+// עסקאות אשראי
 // ---------------------------------------------------------------------------
 
-export type CardcomInstallmentTransaction = {
+export type CardcomTransaction = {
+  transactionId: number;
   amountAgorot: number;
-  date: string; // YYYY-MM-DD
+  date: string; // ISO, מועד החיוב
   installments: number;
   firstAgorot: number;
   constAgorot: number;
+  /** המסמך שהעסקה הזו יצרה או שולמה בו — הקישור המדויק בין תשלום למסמך */
+  documentNumber: number | null;
+  documentType: string | null;
+  cardOwnerName: string | null;
 };
 
 /**
- * מסמכי קארדקום אינם נושאים את מספר התשלומים — רק העסקה עצמה. ה-endpoint הזה
- * משתמש במוסכמות אחרות מזה של המסמכים: תאריכים ב-DDMMYYYY, ו-Page/Page_size.
+ * כל עסקאות האשראי בטווח. ה-endpoint הזה משתמש במוסכמות אחרות מזה של
+ * המסמכים: תאריכים ב-DDMMYYYY, ו-Page/Page_size (10–2000).
  */
-export async function listInstallmentTransactions(
+export async function listTransactions(
   config: CardcomConfig,
   args: { fromDate: string; toDate: string },
-): Promise<CardcomInstallmentTransaction[]> {
+): Promise<CardcomTransaction[]> {
   const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}${iso.slice(5, 7)}${iso.slice(0, 4)}`;
-  type Row = { Amount: number; CreateDate: string; NumberOfPayments: number; FirstPaymentAmount: number; ConstPaymentAmount: number };
-  const out: CardcomInstallmentTransaction[] = [];
-  for (let page = 1; page <= 20; page++) {
+  type Row = {
+    TranzactionId: number; Amount: number; CreateDate: string; NumberOfPayments: number;
+    FirstPaymentAmount: number; ConstPaymentAmount: number;
+    DocumentNumber?: number | null; DocumentType?: string | number | null; CardOwnerName?: string | null;
+  };
+  const out: CardcomTransaction[] = [];
+  for (let page = 1; page <= 40; page++) {
     const json = await call<CardcomResponse & { Tranzactions?: Row[] }>(config, 'Transactions/ListTransactions', {
       TerminalNumber: config.terminalNumber,
       FromDate: ddmmyyyy(args.fromDate),
@@ -337,17 +347,29 @@ export async function listInstallmentTransactions(
     });
     const rows = json.Tranzactions ?? [];
     for (const r of rows) {
-      if (Number(r.NumberOfPayments) > 1) {
-        out.push({
-          amountAgorot: Math.round(Number(r.Amount) * 100),
-          date: String(r.CreateDate).slice(0, 10),
-          installments: Number(r.NumberOfPayments),
-          firstAgorot: Math.round(Number(r.FirstPaymentAmount) * 100),
-          constAgorot: Math.round(Number(r.ConstPaymentAmount) * 100),
-        });
-      }
+      out.push({
+        transactionId: Number(r.TranzactionId),
+        amountAgorot: Math.round(Number(r.Amount) * 100),
+        date: String(r.CreateDate),
+        installments: Number(r.NumberOfPayments) || 1,
+        firstAgorot: Math.round(Number(r.FirstPaymentAmount ?? 0) * 100),
+        constAgorot: Math.round(Number(r.ConstPaymentAmount ?? 0) * 100),
+        documentNumber: r.DocumentNumber ? Number(r.DocumentNumber) : null,
+        documentType: r.DocumentType == null ? null : String(r.DocumentType),
+        cardOwnerName: r.CardOwnerName ?? null,
+      });
     }
     if (rows.length < 500) break;
   }
   return out;
+}
+
+export type CardcomInstallmentTransaction = CardcomTransaction;
+
+/** רק עסקאות בתשלומים. */
+export async function listInstallmentTransactions(
+  config: CardcomConfig,
+  args: { fromDate: string; toDate: string },
+): Promise<CardcomInstallmentTransaction[]> {
+  return (await listTransactions(config, args)).filter((t) => t.installments > 1);
 }

@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { getInvoiceProvider } from '../invoicing';
-import { cardcomConfigFromEnv, listInstallmentTransactions } from '../cardcom/client';
+import { cardcomConfigFromEnv, listTransactions } from '../cardcom/client';
+import { indexByDocument } from '../cardcom/payment-date';
 import { syncSchedule } from './recognition';
 import { assignToPeriod } from './documents';
 import { vatRateBpAt } from '../vat';
@@ -78,14 +79,32 @@ export async function syncCardcomDocuments(args: {
   const result: SyncResult = { fetched: 0, created: 0, updated: 0, skipped: 0, errors: [] };
   const provider = getInvoiceProvider();
   const business = await prisma.business.findUniqueOrThrow({ where: { id: args.businessId } });
+
+  // עסקאות האשראי מצביעות על המסמך ששולם בהן, ומועד החיוב שלהן הוא מועד
+  // התשלום המדויק. הטווח מתחיל שנה לפני המסמכים: חשבונית מופקת לעיתים חודשים
+  // אחרי החיוב.
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const yearBefore = new Date(args.fromDate.getTime() - 365 * 24 * 3600 * 1000);
+  let byDocument = new Map<number, { date: string }>();
+  try {
+    byDocument = indexByDocument(
+      await listTransactions(cardcomConfigFromEnv(), { fromDate: iso(yearBefore), toDate: iso(args.toDate) }),
+    );
+  } catch (error) {
+    result.errors.push(`עסקאות: ${error instanceof Error ? error.message : String(error)}`);
+  }
   const place = (documentId: string, reportDate: Date) =>
     assignToPeriod({ businessId: args.businessId, documentId, reportDate, frequency: business.vatFrequency });
 
   const documents = await provider.listDocuments({ fromDate: args.fromDate, toDate: args.toDate });
   result.fetched = documents.length;
 
-  for (const doc of documents) {
+  for (const raw of documents) {
     try {
+      const linked = byDocument.get(Number(raw.documentNumber));
+      const doc = linked
+        ? { ...raw, paymentDate: new Date(`${linked.date.slice(0, 10)}T00:00:00.000Z`) }
+        : raw;
       const data = toDocumentData(args.businessId, doc);
 
       const existing = await prisma.document.findUnique({
@@ -172,7 +191,7 @@ export async function syncCardcomDocuments(args: {
         result.created++;
       }
     } catch (error) {
-      result.errors.push(`מסמך ${doc.documentNumber}: ${error instanceof Error ? error.message : String(error)}`);
+      result.errors.push(`מסמך ${raw.documentNumber}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -204,12 +223,32 @@ export async function enrichInstallments(args: {
   toDate: Date;
 }): Promise<{ transactions: number; matched: number }> {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const transactions = await listInstallmentTransactions(cardcomConfigFromEnv(), {
+  const transactions = (await listTransactions(cardcomConfigFromEnv(), {
     fromDate: iso(args.fromDate),
     toDate: iso(args.toDate),
-  });
+  })).filter((t) => t.installments > 1);
   let matched = 0;
   for (const t of transactions) {
+    // קישור ישיר: העסקה יודעת על איזה מסמך היא
+    if (t.documentNumber != null) {
+      const direct = await prisma.document.findFirst({
+        where: { businessId: args.businessId, direction: 'INCOME', number: String(t.documentNumber), status: { not: 'VOID' } },
+        select: { id: true },
+      });
+      if (direct) {
+        await prisma.document.update({
+          where: { id: direct.id },
+          data: {
+            installments: t.installments,
+            installmentAgorot: t.constAgorot,
+            firstInstallmentAgorot: t.firstAgorot !== t.constAgorot ? t.firstAgorot : null,
+          },
+        });
+        await syncSchedule(direct.id);
+        matched++;
+        continue;
+      }
+    }
     const day = new Date(`${t.date}T00:00:00.000Z`);
     const next = new Date(day.getTime() + 24 * 3600 * 1000);
     const candidates = await prisma.document.findMany({
