@@ -103,9 +103,43 @@ export async function syncCardcomDocuments(args: {
             number: doc.documentNumber,
             source: { not: 'CARDCOM' },
           },
-          select: { id: true },
+          select: {
+            id: true, status: true, netAgorot: true, vatAgorot: true, totalAgorot: true, isCredit: true, notes: true,
+            vatPeriod: { select: { status: true } },
+          },
         });
         if (sameDocument) {
+          // מסמך שקארדקום מכירה הוא מסמך שהופק — אין מה לאשר בו ידנית. קארדקום
+          // היא המקור המוסמך לסכומים, ולכן אם הקובץ נקרא אחרת, הסכומים שלה גוברים
+          // והפער נרשם בהערה. מסמך שבוטל ביד, או מתקופה שדווחה, לא נוגעים בו.
+          const untouchable = sameDocument.status === 'VOID' || sameDocument.vatPeriod?.status === 'FILED';
+          if (!untouchable) {
+            const matches =
+              sameDocument.netAgorot === doc.netAgorot &&
+              sameDocument.vatAgorot === doc.vatAgorot &&
+              sameDocument.totalAgorot === doc.totalAgorot &&
+              sameDocument.isCredit === doc.isCredit;
+            const note = matches
+              ? 'אומת מול קארדקום — הסכומים זהים'
+              : `אומת מול קארדקום — הסכומים עודכנו לפי קארדקום (בקובץ נקראו: ${(sameDocument.netAgorot / 100).toFixed(2)} + ${(sameDocument.vatAgorot / 100).toFixed(2)} = ${(sameDocument.totalAgorot / 100).toFixed(2)})`;
+            const alreadyNoted = sameDocument.notes?.includes('אומת מול קארדקום');
+            if (sameDocument.status === 'DRAFT' || !matches) {
+              await prisma.document.update({
+                where: { id: sameDocument.id },
+                data: {
+                  status: 'CONFIRMED',
+                  netAgorot: doc.netAgorot,
+                  vatAgorot: doc.vatAgorot,
+                  totalAgorot: doc.totalAgorot,
+                  isCredit: doc.isCredit,
+                  counterpartyVatId: sameDocument.status === 'DRAFT' ? (doc.customerVatId ?? undefined) : undefined,
+                  notes: alreadyNoted ? sameDocument.notes : [sameDocument.notes, note].filter(Boolean).join(' · '),
+                },
+              });
+              result.updated++;
+              continue;
+            }
+          }
           result.skipped++;
           continue;
         }
