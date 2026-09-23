@@ -87,10 +87,12 @@ export async function syncCardcomDocuments(args: {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const yearBefore = new Date(args.fromDate.getTime() - 365 * 24 * 3600 * 1000);
   let byDocument = new Map<number, { date: string }>();
+  let transactionsLoaded = false;
   try {
     byDocument = indexByDocument(
       await listTransactions(cardcomConfigFromEnv(), { fromDate: iso(yearBefore), toDate: iso(args.toDate) }),
     );
+    transactionsLoaded = true;
   } catch (error) {
     result.errors.push(`עסקאות: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -116,7 +118,7 @@ export async function syncCardcomDocuments(args: {
             externalId: doc.externalId,
           },
         },
-        select: { id: true, vatPeriod: { select: { status: true } } },
+        select: { id: true, reportDate: true, vatPeriod: { select: { status: true } } },
       });
 
       // אותה חשבונית עשויה להיות כבר בספרים ממקור אחר — למשל קובץ PDF שנקלט
@@ -181,8 +183,12 @@ export async function syncCardcomDocuments(args: {
           result.skipped++;
           continue;
         }
-        await prisma.document.update({ where: { id: existing.id }, data });
-        await place(existing.id, data.reportDate);
+        // בלי רשימת העסקאות אין לדעת מתי שולם, ותאריך ההפקה הוא ניחוש גרוע יותר
+        // ממה שכבר רשום. מסמך קיים שומר אז את מועד התשלום שלו.
+        const keepDate = !linked && !transactionsLoaded;
+        const reportDate = keepDate ? existing.reportDate : data.reportDate;
+        await prisma.document.update({ where: { id: existing.id }, data: { ...data, reportDate } });
+        await place(existing.id, reportDate);
         await syncSchedule(existing.id);
         result.updated++;
       } else {

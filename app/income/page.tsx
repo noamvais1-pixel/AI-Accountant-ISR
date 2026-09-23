@@ -12,6 +12,8 @@ import { documentsRecognizedInRange } from '@/lib/services/recognition';
 import { toDateInputValue } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
+// פעולת הסנכרון רצה בהקשר של הדף הזה: משיכה מתחילת השנה עוברת מאות מסמכים ואסור שתיקטע באמצע
+export const maxDuration = 300;
 
 export default async function IncomePage({ searchParams }: { searchParams: Promise<{ year?: string; period?: string }> }) {
   const business = await getActiveBusinessOrNull();
