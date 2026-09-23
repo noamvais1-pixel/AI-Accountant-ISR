@@ -41,6 +41,8 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
     orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
   });
 
+  const pendingCount = documents.filter((d) => d.status === 'DRAFT').length;
+
   const totals = documents.reduce(
     (acc, doc) => {
       if (doc.status !== 'CONFIRMED') return acc;
@@ -86,6 +88,13 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
         frequency={business.vatFrequency}
         action="/income"
       />
+
+      {pendingCount > 0 && (
+        <Alert tone="warning">
+          {pendingCount} מסמכים בתקופה זו ממתינים לאישור ואינם נכללים בסכומים למעלה. אישור נעשה
+          בכפתור "אישור" בשורת המסמך.
+        </Alert>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat label="עסקאות חייבות" value={formatILS(totals.net)} />

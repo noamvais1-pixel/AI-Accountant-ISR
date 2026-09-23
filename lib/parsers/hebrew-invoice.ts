@@ -140,12 +140,15 @@ export function parseHebrewInvoice(
         counterpartyVatId = id[1];
         continue;
       }
+      // בפריסה החדשה שעת ההפקה והתאריך יושבים באותה שורה עם שם הלקוח
+      // ("16:00 22/06/2026   פערי פוטש"). מסירים אותם לפני שהשורה נחשבת לשם.
+      const withoutStamp = trimmed.replace(/\b\d{1,2}:\d{2}\b/g, '').replace(/\b\d{2}\/\d{2}\/\d{4}\b/g, '').trim();
       // שם: שורה עם אותיות עבריות שאינה טלפון ואינה תווית
-      if (!counterpartyName && /[֐-׿]/.test(trimmed) && !/^0\d|נייד|טלפון|תאריך|מקור/.test(trimmed)) {
+      if (!counterpartyName && /[֐-׿]/.test(withoutStamp) && !/^0\d|נייד|טלפון|תאריך|מקור/.test(withoutStamp)) {
         // pdftotext משתיל לעיתים רווח בתוך שם ("לקוחה שלי שית"). לא מנסים לתקן:
         // כל כלל שיאחד אות בודדת לשכנתה ישבש שמות לגיטימיים. ההתאמה בין
         // לקוחות נעשית לפי ח.פ, כך שהשם הוא לתצוגה בלבד וניתן לעריכה.
-        counterpartyName = trimmed.replace(/\s{2,}/g, ' ').slice(0, 80);
+        counterpartyName = withoutStamp.replace(/\s{2,}/g, ' ').slice(0, 80);
       }
     }
   }

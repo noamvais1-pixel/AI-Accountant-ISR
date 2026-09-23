@@ -99,7 +99,14 @@ export function DocumentTable({
                     <td className="whitespace-nowrap px-4 py-2.5 text-left ltr-num font-semibold">{formatILS(s * doc.totalAgorot)}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-col items-start gap-1">
-                        {doc.status === 'VOID' ? <Badge tone="red">מבוטל</Badge> : <Badge tone="green">מאושר</Badge>}
+                        {/* טיוטה אינה "מאושר": היא לא נספרת בסכומים, והתג חייב לומר זאת */}
+                        {doc.status === 'VOID' ? (
+                          <Badge tone="red">מבוטל</Badge>
+                        ) : doc.status === 'DRAFT' ? (
+                          <Badge tone="amber">ממתין לאישור</Badge>
+                        ) : (
+                          <Badge tone="green">מאושר</Badge>
+                        )}
                         <span className="text-[10px] text-[var(--muted)]">{SOURCE_LABELS[doc.source]}</span>
                       </div>
                     </td>
@@ -123,6 +130,16 @@ export function DocumentTable({
                           >
                             {isEditing ? 'סגירה' : 'עריכה'}
                           </button>
+                          {doc.status === 'DRAFT' && (
+                            <button
+                              type="button"
+                              disabled={pending}
+                              onClick={() => act(() => setDocumentStatus(doc.id, 'CONFIRMED'))}
+                              className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                            >
+                              אישור
+                            </button>
+                          )}
                           {doc.status !== 'VOID' ? (
                             <button
                               type="button"

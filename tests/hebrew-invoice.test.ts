@@ -121,3 +121,26 @@ test('שם עם רווח שנשתל על ידי pdftotext נשמר כפי שהו
   const r = parseHebrewInvoice(CREDIT, OWN);
   assert.equal(r?.counterpartyName, 'לקוחה שלי שית');
 });
+
+/** הפריסה החדשה: שעה ותאריך באותה שורה עם שם הלקוח. */
+const NEW_LAYOUT = `
+                דנה כהן
+                520000472
+תאריך                                                    לכבוד:
+16:00 22/06/2026                                         פערי פוטש
+                                                         נייד058-4479322 :
+מקור
+                     חשבונית מס קבלה 40254
+          ₪166.95   חייב במע"מ
+           ₪30.05   מע"מ נגבה 18.00%
+       ₪197.00      סה"כ שקל
+`;
+
+test('שעה ותאריך שיושבים בשורת הלקוח אינם נכנסים לשם', () => {
+  const r = parseHebrewInvoice(NEW_LAYOUT, OWN);
+  assert.ok(r);
+  assert.equal(r.counterpartyName, 'פערי פוטש');
+  assert.equal(r.issueDate, '2026-06-22');
+  assert.equal(r.totalAmount, 197);
+  assert.equal(validateAmounts(r), null);
+});
