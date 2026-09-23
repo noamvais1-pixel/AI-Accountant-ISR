@@ -75,7 +75,8 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
 
       <SyncPanel
         configured={getInvoiceProvider().isConfigured()}
-        defaultFrom={toDateInputValue(current.startDate)}
+        // מתחילת השנה: הסנכרון בטוח לחזרה, ותקופה בודדת מפספסת חשבוניות שנוספו באיחור
+        defaultFrom={toDateInputValue(new Date(Date.UTC(current.year, 0, 1)))}
         defaultTo={toDateInputValue(new Date())}
       />
 

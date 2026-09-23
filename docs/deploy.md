@@ -26,8 +26,10 @@
 1. יצירת פרויקט ב-Supabase, ובתוכו דלי אחסון פרטי בשם `documents`.
 2. הגדרת משתני הסביבה ב-Vercel.
 3. `npx prisma db push` מול `DIRECT_URL` — יוצר את הטבלאות.
-4. `npm run migrate:cloud` — מעביר את הנתונים והקבצים מהמחשב.
-5. פריסה, ואז הוספת `<כתובת האתר>/api/drive/callback` ל-redirect URIs בגוגל.
+4. `npm run db:secure` — **חובה אחרי כל `db push` שיוצר טבלה חדשה.** בלי זה הטבלה
+   חשופה לקריאה דרך ה-REST של Supabase עם המפתח הציבורי.
+5. `npm run migrate:cloud` — מעביר את הנתונים והקבצים מהמחשב.
+6. פריסה, ואז הוספת `<כתובת האתר>/api/drive/callback` ל-redirect URIs בגוגל.
 
 ## אחרי הפריסה
 

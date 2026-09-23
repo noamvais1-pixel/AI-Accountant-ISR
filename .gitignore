@@ -1,6 +1,7 @@
 # תלויות ובנייה
 node_modules/
 .next/
+.next-*/
 .next-app/
 out/
 build/
