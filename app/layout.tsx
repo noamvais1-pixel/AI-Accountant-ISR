@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Heebo } from 'next/font/google';
 import Link from 'next/link';
+import { currentUser } from '@/lib/auth/server';
 import './globals.css';
 
 const heebo = Heebo({ subsets: ['hebrew', 'latin'], variable: '--font-heebo', display: 'swap' });
@@ -19,7 +20,8 @@ const NAV = [
   { href: '/settings', label: 'הגדרות' },
 ];
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const user = await currentUser();
   return (
     <html lang="he" dir="rtl" className={heebo.variable}>
       <body className="min-h-dvh font-sans">
@@ -41,6 +43,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </Link>
                 ))}
               </nav>
+              {user && (
+                <form action="/auth/signout" method="post" className="ms-auto flex items-center gap-2">
+                  <span className="ltr-num text-xs text-[var(--muted)]">{user.email}</span>
+                  <button
+                    type="submit"
+                    className="rounded-lg px-2.5 py-1 text-xs text-[var(--muted)] transition-colors hover:bg-ink-100 hover:text-[var(--text)] dark:hover:bg-ink-800"
+                  >
+                    יציאה
+                  </button>
+                </form>
+              )}
             </div>
           </header>
           <main className="flex-1 px-5 py-6">{children}</main>

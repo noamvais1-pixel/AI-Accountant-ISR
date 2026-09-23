@@ -12,7 +12,20 @@
  * היא לא רואה ולא נוגעת בשום דבר אחר בדרייב.
  */
 
-export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+/**
+ * drive.file לבדו רואה רק קבצים שהאפליקציה עצמה יצרה, ולכן הוא מספיק לגיבוי
+ * אבל לא לקליטה מתיקייה קיימת. drive.readonly נדרש כדי לקרוא את תיקיית "עסק".
+ * זו הרשאה רחבה — קריאה לכל הדרייב — ולכן היא מבוקשת רק כשהקליטה מופעלת.
+ */
+export const DRIVE_SCOPE_BACKUP = 'https://www.googleapis.com/auth/drive.file';
+export const DRIVE_SCOPE_IMPORT = 'https://www.googleapis.com/auth/drive.readonly';
+
+export function driveScopes(): string {
+  const withImport = process.env.DRIVE_IMPORT_ENABLED === 'true';
+  return withImport ? `${DRIVE_SCOPE_BACKUP} ${DRIVE_SCOPE_IMPORT}` : DRIVE_SCOPE_BACKUP;
+}
+
+export const DRIVE_SCOPE = DRIVE_SCOPE_BACKUP;
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const API = 'https://www.googleapis.com/drive/v3';
@@ -57,7 +70,7 @@ export function buildConsentUrl(config: GoogleOAuthConfig, state: string): strin
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: 'code',
-    scope: DRIVE_SCOPE,
+    scope: driveScopes(),
     // בלי שני אלה גוגל לא מחזירה refresh token בהרשאה חוזרת, והחיבור יפוג תוך שעה.
     access_type: 'offline',
     prompt: 'consent',

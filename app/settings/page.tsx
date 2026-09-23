@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { getActiveBusinessOrNull } from '@/lib/services/business';
 import { isGoogleConfigured } from '@/lib/drive/client';
 import { DrivePanel } from './drive-panel';
+import { DriveImportPanel } from './drive-import-panel';
 import { getInvoiceProvider } from '@/lib/invoicing';
 import { Panel, Alert, Badge } from '@/components/ui';
 import { BusinessForm } from './business-form';
@@ -87,6 +88,15 @@ export default async function SettingsPage({
           ok={false}
           detail="טרם מחובר. כרגע הדוח מופק כקובץ PCN874 להעלאה ידנית באזור האישי."
         />
+      </Panel>
+
+      <Panel title="קליטת מסמכים מהדרייב">
+        <div className="p-5">
+          <DriveImportPanel
+            connected={Boolean(business?.driveAccountEmail)}
+            folderName={business?.driveImportFolder || 'עסק'}
+          />
+        </div>
       </Panel>
 
       <Panel title="גיבוי הצילומים">

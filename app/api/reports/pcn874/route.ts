@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { apiUser } from '@/lib/auth/server';
 import { getActiveBusiness } from '@/lib/services/business';
 import { buildVatReport } from '@/lib/reports/vat-report';
 import { generatePcn874 } from '@/lib/reports/pcn874';
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic';
 
 /** מוריד את קובץ הדיווח המפורט לתקופה. */
 export async function GET(request: Request) {
+  // ה-middleware כבר חוסם, אבל מסלול שמגיש מסמכים לא יסתמך על שכבה אחת בלבד.
+  if (!(await apiUser())) return new Response('לא מורשה', { status: 401 });
   try {
     const business = await getActiveBusiness();
     const url = new URL(request.url);

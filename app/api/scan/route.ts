@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { apiUser } from '@/lib/auth/server';
 import { extractDocument } from '@/lib/ocr/gemini';
 import { createDraftFromExtraction } from '@/lib/services/documents';
 import { getActiveBusiness } from '@/lib/services/business';
@@ -15,6 +16,8 @@ const MAX_BYTES = 15 * 1024 * 1024;
  * הטיוטה תמיד ממתינה לאישור — קריאת AI לא נכנסת לספרים בלי עין אנושית.
  */
 export async function POST(request: Request) {
+  // ה-middleware כבר חוסם, אבל מסלול שמגיש מסמכים לא יסתמך על שכבה אחת בלבד.
+  if (!(await apiUser())) return new NextResponse('לא מורשה', { status: 401 });
   try {
     const business = await getActiveBusiness();
     const form = await request.formData();

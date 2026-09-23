@@ -7,8 +7,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // בענן, DATABASE_URL עובר דרך מאגר חיבורים שאינו תומך בשינויי סכימה.
+  // DIRECT_URL הוא חיבור ישיר, ומשמש רק להרצת המיגרציות.
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +54,9 @@ model Business {
   driveAccountEmail String?
   driveRootFolderId String?
   driveConnectedAt  DateTime?
+  // הפעם האחרונה שנסרקה תיקיית הקליטה בדרייב
+  driveImportFolder String?   @default("עסק")
+  driveImportSyncAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

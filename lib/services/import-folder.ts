@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { extname, join } from 'node:path';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { extractDocument } from '../ocr/gemini';
-import { isAllowedMime, saveUpload } from '../storage';
+import { isAllowedMime, saveBytes } from '../storage';
 import { createDraftFromExtraction, assignToPeriod } from './documents';
 import { extractPdfText } from '../parsers/pdf-text';
 import { parseHebrewInvoice, validateAmounts } from '../parsers/hebrew-invoice';
@@ -228,9 +228,7 @@ async function importOne(
 
     const { extracted, raw } = result;
 
-    const { key } = await saveUpload(
-      new File([new Uint8Array(data)], basename(candidate.path), { type: candidate.mimeType }),
-    );
+    const key = await saveBytes(data, candidate.mimeType, extname(candidate.path));
 
     // הבדיקה למעלה אינה מספיקה: שני עובדים יכולים לבדוק את אותו קובץ בו-זמנית,
     // שניהם לא ימצאו רשומה, ושניהם ינסו לכתוב. האילוץ במסד הוא ההגנה האמיתית.
