@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSchedule, addMonthsUtc } from '../lib/installments';
+import { buildSchedule, addMonthsUtc, mirrorSchedule } from '../lib/installments';
 
 const base = {
   reportDate: new Date('2026-01-13T00:00:00Z'),
@@ -65,4 +65,20 @@ test('חשבונית שהופקה באיחור נפרסת ממועד התשלו�
   const s = buildSchedule({ ...base, reportDate: new Date('2026-09-08T00:00:00Z'), installments: 3 })!;
   assert.equal(s[0].dueDate.toISOString().slice(0, 10), '2026-09-08');
   assert.equal(s[2].dueDate.toISOString().slice(0, 10), '2026-11-08');
+});
+
+test('זיכוי על עסקה בתשלומים: מה שטרם נגבה מתבטל בחודשו, מה שנגבה מוחזר במועד הזיכוי', () => {
+  const d = (s: string) => new Date(`${s}T00:00:00Z`);
+  const original = [
+    { seq: 1, dueDate: d('2026-04-26'), netAgorot: 37712, vatAgorot: 6788, totalAgorot: 44500 },
+    { seq: 2, dueDate: d('2026-05-26'), netAgorot: 37712, vatAgorot: 6788, totalAgorot: 44500 },
+    { seq: 3, dueDate: d('2026-06-26'), netAgorot: 37712, vatAgorot: 6788, totalAgorot: 44500 },
+  ];
+  const mirrored = mirrorSchedule(original, d('2026-05-30'));
+  assert.deepEqual(
+    mirrored.map((s) => s.dueDate.toISOString().slice(0, 10)),
+    ['2026-05-30', '2026-05-30', '2026-06-26'],
+  );
+  // הסכומים אינם משתנים — רק המועדים
+  assert.equal(mirrored.reduce((a, s) => a + s.totalAgorot, 0), 133500);
 });

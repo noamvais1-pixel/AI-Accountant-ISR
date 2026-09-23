@@ -46,6 +46,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
       vatPeriod: periodNo ? { year, periodNo } : { year },
     },
     orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
+    include: { reverses: { select: { number: true } } },
   });
 
   const pendingCount = documents.filter((d) => d.status === 'DRAFT').length;

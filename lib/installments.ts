@@ -83,3 +83,22 @@ export function inRange(date: Date, start: Date, end: Date): boolean {
   const t = date.getTime();
   return t >= start.getTime() && t <= end.getTime();
 }
+
+/**
+ * לוח ההכרה של זיכוי שמבטל מסמך בתשלומים.
+ *
+ * תשלום שטרם נגבה במועד הזיכוי מתבטל בחודש שבו היה אמור להיגבות — הכסף
+ * לעולם לא יגיע, ולכן גם ההכרה בו וגם ביטולה נופלים על אותו חודש ומתאפסים.
+ * תשלום שכבר נגבה מוחזר ללקוח בפועל במועד הזיכוי, ולכן מוכר שם. כך זיכוי
+ * לא משנה רטרואקטיבית תקופה שכבר דווחה, ועסקה שבוטלה מיד לא מפילה שנה
+ * שלמה של תשלומים על חודש אחד.
+ */
+export function mirrorSchedule(
+  original: ScheduledInstallment[],
+  refundDate: Date,
+): ScheduledInstallment[] {
+  return original.map((s) => ({
+    ...s,
+    dueDate: s.dueDate.getTime() < refundDate.getTime() ? refundDate : s.dueDate,
+  }));
+}

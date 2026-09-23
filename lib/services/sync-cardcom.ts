@@ -3,6 +3,7 @@ import { getInvoiceProvider } from '../invoicing';
 import { cardcomConfigFromEnv, listTransactions } from '../cardcom/client';
 import { indexByDocument } from '../cardcom/payment-date';
 import { syncSchedule } from './recognition';
+import { pickReversedDocument } from '../reversals';
 import { assignToPeriod } from './documents';
 import { vatRateBpAt } from '../vat';
 import type { DocType } from '@prisma/client';
@@ -207,7 +208,54 @@ export async function syncCardcomDocuments(args: {
     result.errors.push(`תשלומים: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  // אחרי שהתשלומים ידועים: זיכוי שמבטל מסמך בתשלומים מקבל את הלוח שלו
+  try {
+    await linkReversals(args.businessId);
+  } catch (error) {
+    result.errors.push(`זיכויים: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   return result;
+}
+
+/**
+ * מקשר כל חשבונית זיכוי מקארדקום למסמך שהיא מבטלת.
+ *
+ * בדוח המסמכים של קארדקום אין שדה מפורש לכך, ולכן ההתאמה היא לפי לקוח,
+ * סכום וסדר זמנים (ראו lib/reversals.ts). מסמך שכבר בוטל אינו מועמד. אחרי
+ * הקישור לוח התשלומים של הזיכוי נבנה מחדש כדי לשקף את המקור.
+ */
+export async function linkReversals(businessId: string): Promise<{ linked: number }> {
+  const credits = await prisma.document.findMany({
+    where: { businessId, direction: 'INCOME', isCredit: true, source: 'CARDCOM', reversesId: null, status: { not: 'VOID' } },
+    select: { id: true, issueDate: true, totalAgorot: true, counterpartyName: true, counterpartyVatId: true },
+  });
+  let linked = 0;
+  for (const credit of credits) {
+    const candidates = await prisma.document.findMany({
+      where: {
+        businessId,
+        direction: 'INCOME',
+        isCredit: false,
+        totalAgorot: credit.totalAgorot,
+        issueDate: { lte: credit.issueDate },
+        status: { not: 'VOID' },
+      },
+      select: {
+        id: true, issueDate: true, totalAgorot: true, counterpartyName: true, counterpartyVatId: true, isCredit: true,
+        reversedBy: { select: { id: true }, where: { status: { not: 'VOID' } } },
+      },
+    });
+    const picked = pickReversedDocument(
+      credit,
+      candidates.map((c) => ({ ...c, alreadyReversed: c.reversedBy.length > 0 })),
+    );
+    if (!picked) continue;
+    await prisma.document.update({ where: { id: credit.id }, data: { reversesId: picked.id } });
+    await syncSchedule(credit.id);
+    linked++;
+  }
+  return { linked };
 }
 
 /**

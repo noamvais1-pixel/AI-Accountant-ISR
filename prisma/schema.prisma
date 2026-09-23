@@ -213,6 +213,13 @@ model Document {
   // לוח התשלומים — קיים רק למסמך בתשלומים
   schedule DocumentInstallment[]
 
+  // חשבונית זיכוי שמבטלת מסמך אחר: הזיכוי מוכר באותם חודשים שבהם הוכר
+  // המסמך המקורי, כך שעסקה בתשלומים שבוטלה מתאפסת חודש-חודש ולא מפילה
+  // את כל הסכום על חודש הביטול.
+  reversesId String?
+  reverses   Document?  @relation("Reversal", fields: [reversesId], references: [id], onDelete: SetNull)
+  reversedBy Document[] @relation("Reversal")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -221,6 +228,7 @@ model Document {
   @@index([businessId, direction, reportDate])
   @@index([businessId, status])
   @@index([businessId, counterpartyVatId])
+  @@index([reversesId])
   @@map("documents")
 }
 

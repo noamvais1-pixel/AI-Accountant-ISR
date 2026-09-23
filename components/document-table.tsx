@@ -21,7 +21,7 @@ export function DocumentTable({
   direction,
   locked = false,
 }: {
-  documents: Document[];
+  documents: (Document & { reverses?: { number: string } | null })[];
   direction: 'INCOME' | 'EXPENSE';
   locked?: boolean;
 }) {
@@ -93,7 +93,9 @@ export function DocumentTable({
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="text-xs text-[var(--muted)]">{DOC_TYPE_LABELS[doc.docType]}</span>
                         <span className="ltr-num text-xs">{doc.number}</span>
-                        {doc.isCredit && <Badge tone="red">זיכוי</Badge>}
+                        {doc.isCredit && (
+                          <Badge tone="red">{doc.reverses ? `זיכוי · מבטל ${doc.reverses.number}` : 'זיכוי'}</Badge>
+                        )}
                         {doc.installments && doc.installments > 1 && (
                           <Badge tone="blue">
                             {doc.installments} תשלומים

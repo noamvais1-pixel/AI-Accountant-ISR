@@ -1,5 +1,5 @@
 import { prisma } from '../db';
-import { buildSchedule, inRange } from '../installments';
+import { buildSchedule, inRange, mirrorSchedule } from '../installments';
 import { percentOfBp } from '../money';
 import type { Document } from '@prisma/client';
 
@@ -13,10 +13,28 @@ import type { Document } from '@prisma/client';
 
 /** כותב מחדש את לוח התשלומים של מסמך. נקרא בכל פעם שהמסמך או תשלומיו משתנים. */
 export async function syncSchedule(documentId: string): Promise<number> {
-  const doc = await prisma.document.findUnique({ where: { id: documentId } });
+  const doc = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { reverses: { include: { schedule: { orderBy: { seq: 'asc' } } } } },
+  });
   if (!doc) return 0;
 
-  const schedule = buildSchedule(doc);
+  // זיכוי שמבטל מסמך בתשלומים: תשלומים שטרם נגבו מתבטלים בחודשים שלהם,
+  // תשלומים שכבר נגבו מוחזרים במועד הזיכוי (ראו mirrorSchedule).
+  const mirrored =
+    doc.reverses && doc.reverses.schedule.length > 1 && doc.reverses.totalAgorot === doc.totalAgorot
+      ? mirrorSchedule(
+          doc.reverses.schedule.map((s) => ({
+            seq: s.seq,
+            dueDate: s.dueDate,
+            netAgorot: s.netAgorot,
+            vatAgorot: s.vatAgorot,
+            totalAgorot: s.totalAgorot,
+          })),
+          doc.reportDate,
+        )
+      : null;
+  const schedule = mirrored ?? buildSchedule(doc);
   await prisma.$transaction([
     prisma.documentInstallment.deleteMany({ where: { documentId } }),
     ...(schedule
@@ -43,7 +61,8 @@ export async function documentsRecognizedInRange(
       where: {
         businessId,
         reportDate: { gte: start, lte: end },
-        OR: [{ installments: null }, { installments: { lte: 1 } }],
+        // מסמך עם לוח תשלומים מוכר דרך הלוח בלבד — גם זיכוי שמשקף לוח של מסמך אחר
+        schedule: { none: {} },
       },
       orderBy: { issueDate: 'asc' },
     }),
