@@ -61,7 +61,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="flex items-center gap-2">
           {deal.status === 'CANCELLED' ? <Badge tone="red">בוטלה</Badge> : deal.status === 'PAID' ? <Badge tone="green">שולמה במלואה</Badge> : <Badge tone="blue">פתוחה</Badge>}
-          <DealStatusButtons dealId={deal.id} status={deal.status} />
+          <DealStatusButtons dealId={deal.id} status={deal.status} deletable={!deal.charges.some((c) => c.documentId)} />
         </div>
       </div>
 

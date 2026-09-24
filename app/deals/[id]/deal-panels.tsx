@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { recordDealChargeAction, issueDealDocumentAction, setDealStatusAction, type ActionResult } from '@/app/actions';
+import { recordDealChargeAction, issueDealDocumentAction, setDealStatusAction, deleteDealAction, type ActionResult } from '@/app/actions';
 import { Alert } from '@/components/ui';
 
 const field =
@@ -104,7 +104,7 @@ export function IssueForm({ dealId, charges, configured, dryRun }: { dealId: str
   );
 }
 
-export function DealStatusButtons({ dealId, status }: { dealId: string; status: 'OPEN' | 'PAID' | 'CANCELLED' }) {
+export function DealStatusButtons({ dealId, status, deletable }: { dealId: string; status: 'OPEN' | 'PAID' | 'CANCELLED'; deletable: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -115,9 +115,20 @@ export function DealStatusButtons({ dealId, status }: { dealId: string; status: 
       router.refresh();
     });
   }
+  function remove() {
+    if (!confirm('למחוק את העסקה לצמיתות? התקבולים שנרשמו עליה יימחקו איתה.')) return;
+    start(async () => {
+      const r = await deleteDealAction(dealId);
+      if (r.ok) router.push('/deals');
+      else setError(r.error);
+    });
+  }
   return (
     <span className="flex items-center gap-2">
       {error && <span className="text-xs text-rose-700">{error}</span>}
+      {deletable && (
+        <button type="button" disabled={pending} onClick={remove} className="rounded px-2 py-1 text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:hover:bg-rose-950/40">מחיקה</button>
+      )}
       {status === 'CANCELLED' ? (
         <button type="button" disabled={pending} onClick={() => set('OPEN')} className="rounded px-2 py-1 text-xs hover:bg-ink-100 dark:hover:bg-ink-800">שחזור</button>
       ) : (

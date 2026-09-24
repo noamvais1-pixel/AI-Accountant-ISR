@@ -723,3 +723,29 @@ export async function refreshPaymentRequestAction(id: string): Promise<ActionRes
     return { ok: false, error: error instanceof Error ? error.message : 'הבדיקה נכשלה.' };
   }
 }
+
+/**
+ * מוחק עסקה. מותר רק כשלא הופק עליה מסמך: מסמך שהופק הוא רשומה חוקית
+ * שנשארת בספרים, ועסקה שמאחוריו לא נעלמת — היא מתבטלת.
+ */
+export async function deleteDealAction(id: string): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const deal = await prisma.deal.findFirst({
+      where: { id, businessId: business.id },
+      include: { documents: { select: { id: true } }, charges: { select: { documentId: true } }, paymentRequests: { select: { status: true } } },
+    });
+    if (!deal) return { ok: false, error: 'העסקה לא נמצאה.' };
+    if (deal.documents.length > 0 || deal.charges.some((c) => c.documentId)) {
+      return { ok: false, error: 'הופק על העסקה מסמך, ולכן אי אפשר למחוק אותה. אפשר לבטל אותה.' };
+    }
+    if (deal.paymentRequests.some((r) => r.status === 'SETTLING')) {
+      return { ok: false, error: 'תשלום על העסקה נרשם כרגע. נסי שוב בעוד רגע.' };
+    }
+    await prisma.deal.delete({ where: { id } });
+    revalidatePath('/deals');
+    return { ok: true, message: 'העסקה נמחקה.' };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'המחיקה נכשלה.' };
+  }
+}
