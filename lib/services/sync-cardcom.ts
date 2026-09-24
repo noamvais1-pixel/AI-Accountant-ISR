@@ -133,7 +133,7 @@ export async function syncCardcomDocuments(args: {
             source: { not: 'CARDCOM' },
           },
           select: {
-            id: true, status: true, netAgorot: true, vatAgorot: true, totalAgorot: true, isCredit: true, notes: true,
+            id: true, status: true, reportDate: true, netAgorot: true, vatAgorot: true, totalAgorot: true, isCredit: true, notes: true,
             vatPeriod: { select: { status: true } },
           },
         });
@@ -152,12 +152,17 @@ export async function syncCardcomDocuments(args: {
               ? 'אומת מול קארדקום — הסכומים זהים'
               : `אומת מול קארדקום — הסכומים עודכנו לפי קארדקום (בקובץ נקראו: ${(sameDocument.netAgorot / 100).toFixed(2)} + ${(sameDocument.vatAgorot / 100).toFixed(2)} = ${(sameDocument.totalAgorot / 100).toFixed(2)})`;
             const alreadyNoted = sameDocument.notes?.includes('אומת מול קארדקום');
-            if (sameDocument.status === 'DRAFT' || !matches) {
+            // מועד התשלום ידוע רק לקארדקום; קובץ סרוק נושא את תאריך ההפקה בלבד.
+            // גם מסמך שכבר אושר והסכומים בו תואמים צריך לעבור לחודש שבו שולם.
+            const paymentDateKnown = linked || transactionsLoaded;
+            const datedWrong =
+              paymentDateKnown && sameDocument.reportDate.getTime() !== doc.paymentDate.getTime();
+            if (sameDocument.status === 'DRAFT' || !matches || datedWrong) {
               await prisma.document.update({
                 where: { id: sameDocument.id },
                 data: {
                   status: 'CONFIRMED',
-                  reportDate: doc.paymentDate,
+                  reportDate: paymentDateKnown ? doc.paymentDate : sameDocument.reportDate,
                   netAgorot: doc.netAgorot,
                   vatAgorot: doc.vatAgorot,
                   totalAgorot: doc.totalAgorot,
@@ -166,7 +171,7 @@ export async function syncCardcomDocuments(args: {
                   notes: alreadyNoted ? sameDocument.notes : [sameDocument.notes, note].filter(Boolean).join(' · '),
                 },
               });
-              await place(sameDocument.id, doc.paymentDate);
+              await place(sameDocument.id, paymentDateKnown ? doc.paymentDate : sameDocument.reportDate);
               await syncSchedule(sameDocument.id);
               result.updated++;
               continue;
