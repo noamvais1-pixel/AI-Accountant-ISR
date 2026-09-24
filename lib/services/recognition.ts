@@ -18,6 +18,8 @@ export async function syncSchedule(documentId: string): Promise<number> {
     include: { reverses: { include: { schedule: { orderBy: { seq: 'asc' } } } } },
   });
   if (!doc) return 0;
+  // לוח שהוזן ביד הוא האמת — הסנכרון לא יודע יותר טוב
+  if (doc.scheduleManual) return prisma.documentInstallment.count({ where: { documentId } });
 
   // זיכוי שמבטל מסמך בתשלומים: תשלומים שטרם נגבו מתבטלים בחודשים שלהם,
   // תשלומים שכבר נגבו מוחזרים במועד הזיכוי (ראו mirrorSchedule).

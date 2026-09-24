@@ -57,7 +57,7 @@ export default async function ExpensesPage({
       vatPeriod: periodNo ? { year, periodNo } : { year },
     },
     orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
-    include: { reverses: { select: { number: true } } },
+    include: { reverses: { select: { number: true } }, schedule: { orderBy: { seq: 'asc' }, select: { dueDate: true, totalAgorot: true } } },
   });
 
   const totals = recognized.filter((d) => d.direction === 'EXPENSE').reduce(

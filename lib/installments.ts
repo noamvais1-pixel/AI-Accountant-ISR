@@ -59,23 +59,53 @@ export function buildSchedule(doc: InstallmentSource): ScheduledInstallment[] | 
   if (n < 2) return null;
 
   const totals = split(doc.totalAgorot, n, doc.firstInstallmentAgorot, doc.installmentAgorot);
+  return prorate(doc, totals).map((row, i) => ({ ...row, dueDate: addMonthsUtc(doc.reportDate, i) }));
+}
 
-  // נטו ומע"מ לפי יחס המסמך; האחרון סוגר את ההפרש כדי שהסכומים יסתכמו בדיוק
+/**
+ * מפצל נטו ומע"מ לפי יחס המסמך על סדרת סכומי תשלום נתונה. האחרון סוגר את
+ * ההפרש כדי שנטו, מע"מ וסה"כ יסתכמו בדיוק לסכומי המסמך.
+ */
+function prorate(
+  doc: { netAgorot: number; vatAgorot: number; totalAgorot: number },
+  totals: number[],
+): Omit<ScheduledInstallment, 'dueDate'>[] {
+  const n = totals.length;
   const ratio = doc.totalAgorot === 0 ? 0 : doc.netAgorot / doc.totalAgorot;
   const nets = totals.map((t) => roundHalfAwayFromZero(t * ratio));
   nets[n - 1] += doc.netAgorot - nets.reduce((a, b) => a + b, 0);
   const vats = totals.map((t, i) => t - nets[i]);
   vats[n - 1] += doc.vatAgorot - vats.reduce((a, b) => a + b, 0);
   // אם מע"מ תוקן, הסה"כ של האחרון חייב לזוז איתו כדי שנטו+מע"מ=סה"כ בכל שורה
-  totals[n - 1] = nets[n - 1] + vats[n - 1];
+  const fixed = [...totals];
+  fixed[n - 1] = nets[n - 1] + vats[n - 1];
+  return fixed.map((totalAgorot, i) => ({ seq: i + 1, netAgorot: nets[i], vatAgorot: vats[i], totalAgorot }));
+}
 
-  return totals.map((totalAgorot, i) => ({
-    seq: i + 1,
-    dueDate: addMonthsUtc(doc.reportDate, i),
-    netAgorot: nets[i],
-    vatAgorot: vats[i],
-    totalAgorot,
-  }));
+export type ManualPayment = { dueDate: Date; totalAgorot: number };
+
+/**
+ * לוח הכרה מתשלומים שהוזנו ביד — למשל העברה בשני חלקים בחודשים שונים,
+ * שקארדקום מציגה כמסמך אחד עם מועד העברה אחד. הסכומים חייבים להסתכם בדיוק
+ * לסכום המסמך; אחרת זו שגיאת הזנה ולא משהו שכדאי "לתקן" בשקט.
+ */
+export function buildScheduleFromPayments(
+  doc: { netAgorot: number; vatAgorot: number; totalAgorot: number },
+  payments: ManualPayment[],
+): ScheduledInstallment[] {
+  if (payments.length === 0) throw new Error('יש להזין לפחות תשלום אחד.');
+  for (const p of payments) {
+    if (!Number.isInteger(p.totalAgorot) || p.totalAgorot <= 0) throw new Error('סכום תשלום חייב להיות חיובי.');
+    if (Number.isNaN(p.dueDate.getTime())) throw new Error('תאריך תשלום לא תקין.');
+  }
+  const sum = payments.reduce((a, p) => a + p.totalAgorot, 0);
+  if (sum !== doc.totalAgorot) {
+    throw new Error(
+      `סכום התשלומים (${(sum / 100).toFixed(2)}) אינו שווה לסכום המסמך (${(doc.totalAgorot / 100).toFixed(2)}).`,
+    );
+  }
+  const ordered = [...payments].sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+  return prorate(doc, ordered.map((p) => p.totalAgorot)).map((row, i) => ({ ...row, dueDate: ordered[i].dueDate }));
 }
 
 /** האם מועד נופל בטווח (כולל את שני הקצוות). */

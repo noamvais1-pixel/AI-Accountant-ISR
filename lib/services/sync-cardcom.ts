@@ -286,7 +286,7 @@ export async function enrichInstallments(args: {
     // קישור ישיר: העסקה יודעת על איזה מסמך היא
     if (t.documentNumber != null) {
       const direct = await prisma.document.findFirst({
-        where: { businessId: args.businessId, direction: 'INCOME', number: String(t.documentNumber), status: { not: 'VOID' } },
+        where: { businessId: args.businessId, direction: 'INCOME', number: String(t.documentNumber), status: { not: 'VOID' }, scheduleManual: false },
         select: { id: true },
       });
       if (direct) {
@@ -312,6 +312,7 @@ export async function enrichInstallments(args: {
         totalAgorot: t.amountAgorot,
         issueDate: { gte: day, lt: next },
         status: { not: 'VOID' },
+        scheduleManual: false,
       },
       select: { id: true },
     });

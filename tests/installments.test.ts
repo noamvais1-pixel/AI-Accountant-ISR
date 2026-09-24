@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSchedule, addMonthsUtc, mirrorSchedule } from '../lib/installments';
+import { buildSchedule, addMonthsUtc, mirrorSchedule, buildScheduleFromPayments } from '../lib/installments';
 
 const base = {
   reportDate: new Date('2026-01-13T00:00:00Z'),
@@ -81,4 +81,28 @@ test('זיכוי על עסקה בתשלומים: מה שטרם נגבה מתבט
   );
   // הסכומים אינם משתנים — רק המועדים
   assert.equal(mirrored.reduce((a, s) => a + s.totalAgorot, 0), 133500);
+});
+
+test('פיצול ידני: 12,000 ביולי ו-5,900 בספטמבר על מסמך של 17,900', () => {
+  const d = (s: string) => new Date(`${s}T00:00:00Z`);
+  const doc = { netAgorot: 1516949, vatAgorot: 273051, totalAgorot: 1790000 };
+  const rows = buildScheduleFromPayments(doc, [
+    { dueDate: d('2026-09-24'), totalAgorot: 590000 },
+    { dueDate: d('2026-07-14'), totalAgorot: 1200000 },
+  ]);
+  assert.deepEqual(rows.map((r) => [r.seq, r.dueDate.toISOString().slice(0, 10), r.totalAgorot]), [
+    [1, '2026-07-14', 1200000],
+    [2, '2026-09-24', 590000],
+  ]);
+  assert.equal(rows.reduce((a, r) => a + r.netAgorot, 0), doc.netAgorot);
+  assert.equal(rows.reduce((a, r) => a + r.vatAgorot, 0), doc.vatAgorot);
+  for (const r of rows) assert.equal(r.netAgorot + r.vatAgorot, r.totalAgorot);
+});
+
+test('פיצול ידני שאינו מסתכם לסכום המסמך נדחה', () => {
+  const d = (s: string) => new Date(`${s}T00:00:00Z`);
+  assert.throws(
+    () => buildScheduleFromPayments({ netAgorot: 100, vatAgorot: 18, totalAgorot: 118 }, [{ dueDate: d('2026-07-01'), totalAgorot: 100 }]),
+    /אינו שווה לסכום המסמך/,
+  );
 });

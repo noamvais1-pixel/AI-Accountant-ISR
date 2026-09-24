@@ -12,6 +12,7 @@ import { buildPeriod } from '@/lib/periods';
 import { getInvoiceProvider } from '@/lib/invoicing';
 import { backupPending } from '@/lib/drive/backup';
 import { syncSchedule } from '@/lib/services/recognition';
+import { buildScheduleFromPayments } from '@/lib/installments';
 import type { DocType, Direction, InputKind, LegalType, VatFrequency, VatTreatment } from '@prisma/client';
 
 export type ActionResult = { ok: true; message?: string; data?: unknown } | { ok: false; error: string };
@@ -490,5 +491,81 @@ export async function runDriveBackup(): Promise<ActionResult> {
     return { ok: true, message: `גובו ${summary.uploaded} קבצים לדרייב.` };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'הגיבוי נכשל.' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// פיצול תשלומים ידני
+// ---------------------------------------------------------------------------
+
+/**
+ * קובע ביד באילו מועדים ובאילו סכומים שולם מסמך — למשל העברה של 12,000 ביולי
+ * ועוד 5,900 בספטמבר, שקארדקום מציגה כמסמך אחד עם מועד העברה אחד. הלוח
+ * הידני גובר על הסנכרון עד שמבטלים אותו.
+ */
+export async function savePaymentSplit(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const id = str(form, 'documentId');
+    const doc = await prisma.document.findFirst({
+      where: { id, businessId: business.id },
+      include: { vatPeriod: { select: { status: true } } },
+    });
+    if (!doc) return { ok: false, error: 'המסמך לא נמצא.' };
+    if (doc.vatPeriod?.status === 'FILED') return { ok: false, error: 'המסמך שייך לתקופה שכבר דווחה.' };
+
+    const dates = form.getAll('date').map((v) => String(v).trim());
+    const amounts = form.getAll('amount').map((v) => String(v).trim());
+    const payments = dates
+      .map((date, i) => ({ date, amount: amounts[i] ?? '' }))
+      .filter((p) => p.date !== '' || p.amount !== '')
+      .map((p) => {
+        const agorot = toAgorot(Number(p.amount.replace(/[^\d.-]/g, '')));
+        return { dueDate: parseDateInput(p.date), totalAgorot: agorot };
+      });
+    const rows = buildScheduleFromPayments(doc, payments);
+
+    await prisma.$transaction([
+      prisma.documentInstallment.deleteMany({ where: { documentId: doc.id } }),
+      prisma.documentInstallment.createMany({ data: rows.map((r) => ({ ...r, documentId: doc.id })) }),
+      prisma.document.update({
+        where: { id: doc.id },
+        data: {
+          scheduleManual: true,
+          installments: rows.length,
+          installmentAgorot: null,
+          firstInstallmentAgorot: null,
+          // המסמך משויך לתקופה של התשלום הראשון; שאר התשלומים מוכרים דרך הלוח
+          reportDate: rows[0].dueDate,
+        },
+      }),
+    ]);
+    await assignToPeriod({ businessId: business.id, documentId: doc.id, reportDate: rows[0].dueDate, frequency: business.vatFrequency });
+    revalidatePath('/');
+    revalidatePath('/income');
+    revalidatePath('/expenses');
+    return { ok: true, message: `נשמר פיצול ל-${rows.length} תשלומים.` };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'שמירת הפיצול נכשלה.' };
+  }
+}
+
+/** מבטל פיצול ידני ומחזיר את המסמך ללוח שהסנכרון מחשב. */
+export async function clearPaymentSplit(id: string): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const doc = await prisma.document.findFirst({ where: { id, businessId: business.id } });
+    if (!doc) return { ok: false, error: 'המסמך לא נמצא.' };
+    await prisma.document.update({
+      where: { id: doc.id },
+      data: { scheduleManual: false, installments: null, installmentAgorot: null, firstInstallmentAgorot: null },
+    });
+    await syncSchedule(doc.id);
+    revalidatePath('/');
+    revalidatePath('/income');
+    revalidatePath('/expenses');
+    return { ok: true, message: 'הפיצול בוטל.' };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'ביטול הפיצול נכשל.' };
   }
 }

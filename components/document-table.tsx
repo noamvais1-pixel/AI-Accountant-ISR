@@ -3,6 +3,7 @@
 import { Fragment, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { DocumentForm } from '@/components/document-form';
+import { PaymentSplitEditor } from '@/components/payment-split';
 import { Badge, EmptyState } from '@/components/ui';
 import { deleteDocument, setDocumentStatus } from '@/app/actions';
 import { formatILS } from '@/lib/money';
@@ -21,12 +22,16 @@ export function DocumentTable({
   direction,
   locked = false,
 }: {
-  documents: (Document & { reverses?: { number: string } | null })[];
+  documents: (Document & {
+    reverses?: { number: string } | null;
+    schedule?: { dueDate: Date; totalAgorot: number }[];
+  })[];
   direction: 'INCOME' | 'EXPENSE';
   locked?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<string | null>(null);
+  const [splitting, setSplitting] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -99,7 +104,11 @@ export function DocumentTable({
                         {doc.installments && doc.installments > 1 && (
                           <Badge tone="blue">
                             {doc.installments} תשלומים
-                            {doc.installmentAgorot ? ` · ${formatILS(doc.installmentAgorot)} לתשלום` : ''}
+                            {doc.scheduleManual
+                              ? ' · פיצול ידני'
+                              : doc.installmentAgorot
+                                ? ` · ${formatILS(doc.installmentAgorot)} לתשלום`
+                                : ''}
                           </Badge>
                         )}
                         <DeductibleBadge document={doc} />
@@ -142,6 +151,16 @@ export function DocumentTable({
                           >
                             {isEditing ? 'סגירה' : 'עריכה'}
                           </button>
+                          {doc.status !== 'VOID' && (
+                            <button
+                              type="button"
+                              onClick={() => setSplitting(splitting === doc.id ? null : doc.id)}
+                              className="rounded px-2 py-1 text-xs hover:bg-ink-100 dark:hover:bg-ink-800"
+                              title="באילו מועדים ובאילו סכומים שולם המסמך בפועל"
+                            >
+                              תשלומים
+                            </button>
+                          )}
                           {doc.status === 'DRAFT' && (
                             <button
                               type="button"
@@ -185,6 +204,17 @@ export function DocumentTable({
                       )}
                     </td>
                   </tr>
+                  {splitting === doc.id && (
+                    <tr className="border-b border-[var(--border)] bg-[var(--surface)]">
+                      <td colSpan={8} className="p-4">
+                        <PaymentSplitEditor
+                          document={doc}
+                          schedule={doc.schedule ?? []}
+                          onDone={() => setSplitting(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
                   {isEditing && (
                     <tr className="border-b border-[var(--border)] bg-[var(--surface)]">
                       <td colSpan={8} className="p-4">
