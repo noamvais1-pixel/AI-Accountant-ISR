@@ -58,6 +58,8 @@ model Business {
   driveImportFolder String?   @default("עסק")
   driveImportSyncAt DateTime?
 
+  deals Deal[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -226,6 +228,11 @@ model Document {
   reverses   Document?  @relation("Reversal", fields: [reversesId], references: [id], onDelete: SetNull)
   reversedBy Document[] @relation("Reversal")
 
+  // המסמך הופק מתוך עסקה במערכת — העסקה היא מקור האמת, המסמך נגזר ממנה
+  dealId  String?
+  deal    Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  charges DealCharge[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -235,6 +242,7 @@ model Document {
   @@index([businessId, status])
   @@index([businessId, counterpartyVatId])
   @@index([reversesId])
+  @@index([dealId])
   @@map("documents")
 }
 
@@ -299,4 +307,90 @@ model DocumentInstallment {
   @@unique([documentId, seq])
   @@index([dueDate])
   @@map("document_installments")
+}
+
+// ---------------------------------------------------------------------------
+// עסקאות ותוכניות תשלום
+// ---------------------------------------------------------------------------
+//
+// העסקה נוצרת אצלנו לפני שנגבה שקל: לקוח, שירות, סכום, מספר תשלומים. כל
+// תקבול נרשם כ-DealCharge ברגע שהוא קורה, והמסמך החוקי (חשבונית מס/קבלה)
+// מופק מתוך הרשומה הזו — לא מיובא ומשוחזר אחר כך מ-API חלקי.
+
+enum DealStatus {
+  OPEN // נפתחה, טרם שולמה במלואה
+  PAID // שולמה במלואה
+  CANCELLED // בוטלה
+}
+
+enum PaymentMethod {
+  CARD // כרטיס אשראי
+  BANK_TRANSFER // העברה בנקאית
+  BIT // ביט / פייבוקס
+  CASH // מזומן
+  CHEQUE // שיק
+  OTHER
+}
+
+model Deal {
+  id         String     @id @default(cuid())
+  businessId String
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status     DealStatus @default(OPEN)
+
+  customerName  String
+  customerVatId String?
+  customerEmail String?
+  customerPhone String?
+
+  description String // השירות: "קורס הכשרת מאמנות", "ליווי עסקי — 3 חודשים"
+
+  // הסכום המלא של העסקה, באגורות. נטו ומע"מ נגזרים מהסכום הכולל.
+  netAgorot   Int
+  vatAgorot   Int
+  totalAgorot Int
+  vatRateBp   Int
+  vatTreatment VatTreatment @default(STANDARD)
+
+  // תוכנית התשלום: כמה תשלומים, ומתי הראשון. הלוח הצפוי נגזר מכאן (חודשי).
+  installments     Int      @default(1)
+  firstPaymentDate DateTime
+
+  notes String?
+
+  charges   DealCharge[]
+  documents Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId, status])
+  @@index([businessId, createdAt])
+  @@map("deals")
+}
+
+// תקבול בפועל על חשבון עסקה. נרשם ברגע שהכסף התקבל — ידנית (העברה, ביט,
+// מזומן) או אוטומטית מדף התשלום (אשראי, שלב הבא).
+model DealCharge {
+  id     String @id @default(cuid())
+  dealId String
+  deal   Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  paidAt       DateTime
+  amountAgorot Int
+  method       PaymentMethod
+  // עסקת אשראי בתשלומים: הסכום המלא נגבה בחיוב אחד, הכסף מגיע לאורך חודשים
+  cardInstallments Int     @default(1)
+  reference        String? // אסמכתא, 4 ספרות אחרונות, מספר עסקה
+  notes            String?
+
+  // המסמך שהופק על התקבול הזה. null = טרם הופק מסמך
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([dealId, paidAt])
+  @@index([documentId])
+  @@map("deal_charges")
 }

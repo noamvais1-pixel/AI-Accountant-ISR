@@ -13,7 +13,7 @@ import { getInvoiceProvider } from '@/lib/invoicing';
 import { backupPending } from '@/lib/drive/backup';
 import { syncSchedule } from '@/lib/services/recognition';
 import { buildScheduleFromPayments } from '@/lib/installments';
-import type { DocType, Direction, InputKind, LegalType, VatFrequency, VatTreatment } from '@prisma/client';
+import type { DocType, Direction, InputKind, LegalType, PaymentMethod, VatFrequency, VatTreatment } from '@prisma/client';
 
 export type ActionResult = { ok: true; message?: string; data?: unknown } | { ok: false; error: string };
 
@@ -382,7 +382,8 @@ export async function issueInvoice(_prev: ActionResult | null, form: FormData): 
         vatRateBp: rateBp,
         vatTreatment: 'STANDARD',
         source: 'CARDCOM',
-        externalId: `issued:${issued.documentKind}:${issued.documentNumber}`,
+        // אותו מפתח שהסנכרון משתמש בו, אחרת המסמך היה נמשך שוב ונספר פעמיים
+        externalId: issued.externalId ?? `issued:${issued.documentKind}:${issued.documentNumber}`,
         notes: issued.documentUrl,
       },
       select: { id: true },
@@ -567,5 +568,104 @@ export async function clearPaymentSplit(id: string): Promise<ActionResult> {
     return { ok: true, message: 'הפיצול בוטל.' };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'ביטול הפיצול נכשל.' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// עסקאות ותוכניות תשלום
+// ---------------------------------------------------------------------------
+
+export async function createDealAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const { createDeal } = await import('@/lib/services/deals');
+    const customerVatId = normalizeVatId(str(form, 'customerVatId'));
+    if (customerVatId && !isValidIsraeliId(customerVatId)) {
+      return { ok: false, error: `מספר הזהות/העוסק ${customerVatId} אינו תקין.` };
+    }
+    const total = num(form, 'total');
+    if (total === null || total <= 0) return { ok: false, error: 'יש להזין את סכום העסקה (כולל מע"מ).' };
+    const deal = await createDeal(business.id, {
+      customerName: str(form, 'customerName'),
+      customerVatId: customerVatId || null,
+      customerEmail: optionalStr(form, 'customerEmail'),
+      customerPhone: optionalStr(form, 'customerPhone'),
+      description: str(form, 'description'),
+      totalAgorot: toAgorot(total),
+      vatTreatment: (str(form, 'vatTreatment') || 'STANDARD') as VatTreatment,
+      installments: Number(str(form, 'installments') || '1'),
+      firstPaymentDate: str(form, 'firstPaymentDate') ? parseDateInput(str(form, 'firstPaymentDate')) : new Date(),
+      notes: optionalStr(form, 'notes'),
+    });
+    revalidatePath('/deals');
+    return { ok: true, message: 'העסקה נוצרה.', data: { id: deal.id } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'יצירת העסקה נכשלה.' };
+  }
+}
+
+export async function recordDealChargeAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const { recordCharge } = await import('@/lib/services/deals');
+    const dealId = str(form, 'dealId');
+    const amount = num(form, 'amount');
+    if (amount === null || amount <= 0) return { ok: false, error: 'יש להזין את סכום התקבול.' };
+    await recordCharge(business.id, dealId, {
+      paidAt: parseDateInput(str(form, 'paidAt')),
+      amountAgorot: toAgorot(amount),
+      method: (str(form, 'method') || 'BANK_TRANSFER') as PaymentMethod,
+      cardInstallments: Number(str(form, 'cardInstallments') || '1'),
+      reference: optionalStr(form, 'reference'),
+      notes: optionalStr(form, 'notes'),
+    });
+    revalidatePath(`/deals/${dealId}`);
+    revalidatePath('/deals');
+    return { ok: true, message: 'התקבול נרשם.' };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'רישום התקבול נכשל.' };
+  }
+}
+
+export async function issueDealDocumentAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const { issueDocumentForCharges } = await import('@/lib/services/deals');
+    const dealId = str(form, 'dealId');
+    const chargeIds = form.getAll('chargeId').map(String).filter(Boolean);
+    const { document, issued } = await issueDocumentForCharges(business.id, dealId, {
+      chargeIds,
+      documentKind: str(form, 'documentKind') === 'RECEIPT' ? 'RECEIPT' : 'TAX_INVOICE_RECEIPT',
+      sendByEmail: form.get('sendByEmail') === 'on',
+      frequency: business.vatFrequency,
+    });
+    revalidatePath(`/deals/${dealId}`);
+    revalidatePath('/deals');
+    revalidatePath('/income');
+    revalidatePath('/');
+    return { ok: true, message: `מסמך ${issued.documentNumber} הופק ונרשם בספרים.`, data: { documentId: document.id } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'הפקת המסמך נכשלה.' };
+  }
+}
+
+export async function setDealStatusAction(id: string, status: 'OPEN' | 'CANCELLED'): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const deal = await prisma.deal.findFirst({ where: { id, businessId: business.id }, include: { charges: true } });
+    if (!deal) return { ok: false, error: 'העסקה לא נמצאה.' };
+    if (status === 'CANCELLED' && deal.charges.some((c) => c.documentId)) {
+      return { ok: false, error: 'לעסקה הופקו מסמכים. יש לבטל אותם בזיכוי לפני ביטול העסקה.' };
+    }
+    await prisma.deal.update({ where: { id }, data: { status } });
+    if (status === 'OPEN') {
+      const { refreshDealStatus } = await import('@/lib/services/deals');
+      await refreshDealStatus(id);
+    }
+    revalidatePath(`/deals/${id}`);
+    revalidatePath('/deals');
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'הפעולה נכשלה.' };
   }
 }

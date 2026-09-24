@@ -1,4 +1,4 @@
-import { percentOfBp } from './money';
+import { percentOfBp, roundHalfAwayFromZero } from './money';
 
 /**
  * שיעורי מע"מ בישראל לאורך השנים, בנקודות בסיס.
@@ -117,4 +117,19 @@ export const DEDUCTIBLE_PRESETS = [
 /** מע"מ התשומות המוכר בפועל, בעיגול יחיד. */
 export function deductibleVat(vatAgorot: number, deductibleBp: number): number {
   return percentOfBp(vatAgorot, deductibleBp);
+}
+
+/**
+ * נטו שאחרי חישוב המע"מ מחזיר בדיוק את הסכום הכולל.
+ *
+ * ספק שמקבל מחיר לפני מע"מ מחשב total = net + round(net × שיעור). עיגול
+ * המע"מ עלול להזיז את הסה"כ באגורה מהסכום ששולם בפועל, וחשבונית על 17,900
+ * שמסתכמת ל-17,900.01 היא מסמך שגוי. בודקים את הנטו העגול ואת שכניו.
+ */
+export function netForExactTotal(totalAgorot: number, rateBp: number): number {
+  const guess = fromGross(totalAgorot, rateBp).netAgorot;
+  for (const net of [guess, guess - 1, guess + 1, guess - 2, guess + 2]) {
+    if (net + roundHalfAwayFromZero((net * rateBp) / 10000) === totalAgorot) return net;
+  }
+  return guess;
 }

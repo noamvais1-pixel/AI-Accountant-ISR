@@ -13,6 +13,14 @@ export type InvoiceLineInput = {
   isVatFree?: boolean;
 };
 
+/** תקבול שהמסמך מתעד. חשבונית מס/קבלה חייבת לפרט איך ומתי שולם. */
+export type PaymentLineInput = {
+  date: Date;
+  method: 'CARD' | 'BANK_TRANSFER' | 'BIT' | 'CASH' | 'CHEQUE' | 'OTHER';
+  amountAgorot: number;
+  reference?: string;
+};
+
 export type IssueInvoiceInput = {
   documentKind: 'TAX_INVOICE' | 'TAX_INVOICE_RECEIPT' | 'RECEIPT' | 'PROFORMA' | 'CREDIT_INVOICE';
   customer: {
@@ -31,6 +39,10 @@ export type IssueInvoiceInput = {
   externalId?: string;
   /** האם כל המסמך פטור ממע"מ. */
   isVatFree?: boolean;
+  /** מחירי השורות כוללים מע"מ — כדי שסה"כ המסמך יהיה בדיוק סכום התקבול. */
+  pricesIncludeVat?: boolean;
+  /** התקבולים שהמסמך מתעד (חשבונית מס/קבלה, קבלה). */
+  payments?: PaymentLineInput[];
 };
 
 export type IssuedInvoice = {
@@ -40,6 +52,8 @@ export type IssuedInvoice = {
   documentUrl: string | null;
   /** מספר ההקצאה מרשות המסים, אם הספק החזיר אותו. */
   allocationNumber: string | null;
+  /** המפתח שבו הסנכרון מזהה את המסמך הזה כשהוא נמשך חזרה מהספק — מונע כפילות. */
+  externalId: string | null;
   raw: unknown;
 };
 

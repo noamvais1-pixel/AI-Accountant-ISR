@@ -164,9 +164,13 @@ export type CreateDocumentInput = {
   isVatFree?: boolean;
   products: CardcomProduct[];
   documentDate?: string; // YYYY-MM-DD
+  /** תאריך ערך — מועד התשלום. קובע את התקופה במסמכים על בסיס מזומן. */
+  valueDate?: string; // YYYY-MM-DD
   externalId?: string;
   /** סכום ששולם במזומן — משפיע על סוג המסמך שנוצר בפועל. */
   cash?: number;
+  /** תקבולים חיצוניים (העברה, ביט, שיק...) — מופיעים בסעיף "פירוט" של המסמך. */
+  externalPayments?: { date: string; description: string; reference?: string; amount: number }[];
 };
 
 export type CreateDocumentResult = {
@@ -202,12 +206,23 @@ export async function createDocument(
       Comments: input.comments,
       IsVatFree: input.isVatFree ?? false,
       DocumentDate: input.documentDate,
+      ValueDate: input.valueDate,
       ExternalId: input.externalId,
       Languge: 'he',
       ISOCoinID: 1,
       Products: input.products,
     },
     ...(input.cash !== undefined ? { Cash: input.cash } : {}),
+    ...(input.externalPayments?.length
+      ? {
+          CustomFields: input.externalPayments.map((p) => ({
+            TranDate: p.date,
+            Description: p.description,
+            asmacta: p.reference ?? '',
+            Sum: p.amount,
+          })),
+        }
+      : {}),
   });
 
   return {

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fromGross, fromNet, reconcileAmounts, vatRateBpAt, deductibleVat, vatDeviation } from '../lib/vat';
+import { netForExactTotal } from '../lib/vat';
 import { toAgorot, agorotToWholeShekels, percentOfBp } from '../lib/money';
 
 test('שיעור המע"מ נקבע לפי תאריך המסמך', () => {
@@ -82,4 +83,15 @@ test('חשבונית זיכוי מבטלת במדויק את החשבונית ש
   // 118.50 ש"ח: החיוב מתעגל ל-119 והזיכוי חייב להתעגל ל--119, אחרת נשאר שקל בדוח.
   assert.equal(agorotToWholeShekels(11850) + agorotToWholeShekels(-11850), 0);
   assert.equal(agorotToWholeShekels(-11850), -119);
+});
+
+test('netForExactTotal: נטו שמחזיר בדיוק את הסכום כשקיים כזה, ואחרת הקרוב ביותר', () => {
+  // ב-18% יש סכומים שאף נטו שלם לא מגיע אליהם בדיוק (למשל 1,575.00) — אז אגורה אחת לכל היותר
+  for (const total of [1790000, 19700, 157500, 1688000, 100, 101, 117, 118, 119, 123457]) {
+    const net = netForExactTotal(total, 1800);
+    const back = net + Math.round((net * 1800) / 10000);
+    assert.ok(Math.abs(back - total) <= 1, `total ${total} → ${back}`);
+  }
+  assert.equal(netForExactTotal(1790000, 1800), 1516949);
+  assert.equal(netForExactTotal(1688000, 1800), 1430508);
 });

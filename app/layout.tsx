@@ -15,6 +15,7 @@ const NAV = [
   { href: '/', label: 'סקירה' },
   { href: '/expenses', label: 'הוצאות' },
   { href: '/income', label: 'הכנסות' },
+  { href: '/deals', label: 'עסקאות' },
   { href: '/invoices/new', label: 'הפקת חשבונית' },
   { href: '/reports/vat', label: 'דוח מע"מ' },
   { href: '/settings', label: 'הגדרות' },

@@ -11,14 +11,26 @@ import {
   type CardcomProduct,
 } from '../cardcom/client';
 import { toAgorot, toShekels } from '../money';
+import { netForExactTotal } from '../vat';
 import { resolvePaymentDate } from '../cardcom/payment-date';
 import { utcDate } from '../periods';
+import { vatRateBpAt } from '../vat';
 import type {
   InvoiceProvider,
   IssueInvoiceInput,
   IssuedInvoice,
   ProviderDocument,
 } from './provider';
+
+/** התיאור שמופיע בסעיף "פירוט" של המסמך לכל אופן תשלום */
+const PAYMENT_DESCRIPTIONS: Record<NonNullable<IssueInvoiceInput['payments']>[number]['method'], string> = {
+  CARD: 'כרטיס אשראי',
+  BANK_TRANSFER: 'הפקדה בנקאית',
+  BIT: 'ביט',
+  CASH: 'מזומן',
+  CHEQUE: 'שיק',
+  OTHER: 'חיוב/זיכוי לקוחות',
+};
 
 const DOCUMENT_KIND_TO_CARDCOM: Record<IssueInvoiceInput['documentKind'], CardcomDocumentToCreate> = {
   TAX_INVOICE: 'TaxInvoice',
@@ -103,14 +115,45 @@ export class CardcomProvider implements InvoiceProvider {
   }
 
   async issueInvoice(input: IssueInvoiceInput): Promise<IssuedInvoice> {
-    const products: CardcomProduct[] = input.lines.map((line) => ({
-      Description: line.description,
-      Quantity: line.quantity,
-      UnitCost: toShekels(line.unitPriceAgorot),
-      // TotalLineCost מונע פערי עיגול כשהכמות עשרונית — קארדקום ממליצה לשלוח אותו.
-      TotalLineCost: toShekels(Math.round(line.unitPriceAgorot * line.quantity)),
-      IsVatFree: line.isVatFree ?? false,
-    }));
+    // האם המסוף מפרש את מחירי השורות ככוללים מע"מ. בדוח המסמכים של המסוף
+    // הזה ValidateItemsisPriceIncludeVat=true, ולכן זו ברירת המחדל; אפשר לשנות
+    // ב-CARDCOM_PRICES_INCLUDE_VAT. המחירים אצלנו מומרים לאותה מוסכמה, כדי
+    // שסה"כ המסמך יהיה בדיוק הסכום ששולם.
+    const terminalIncludesVat = process.env.CARDCOM_PRICES_INCLUDE_VAT !== 'false';
+    const rateBp = vatRateBpAt(input.issueDate ?? new Date());
+    const toUnit = (agorot: number, vatFree: boolean) => {
+      if (vatFree || input.isVatFree) return agorot;
+      const inputIncludesVat = input.pricesIncludeVat ?? false;
+      if (inputIncludesVat === terminalIncludesVat) return agorot;
+      // אצלנו נטו, במסוף כולל → מוסיפים מע"מ; אצלנו כולל, במסוף נטו → נטו שמחזיר בדיוק את הסכום
+      return terminalIncludesVat ? agorot + Math.round((agorot * rateBp) / 10000) : netForExactTotal(agorot, rateBp);
+    };
+    const products: CardcomProduct[] = input.lines.map((line) => {
+      const lineTotal = Math.round(line.unitPriceAgorot * line.quantity);
+      const vatFree = line.isVatFree ?? false;
+      return {
+        Description: line.description,
+        Quantity: line.quantity,
+        UnitCost: toShekels(line.quantity === 1 ? toUnit(lineTotal, vatFree) : toUnit(line.unitPriceAgorot, vatFree)),
+        // TotalLineCost מונע פערי עיגול כשהכמות עשרונית — קארדקום ממליצה לשלוח אותו.
+        TotalLineCost: toShekels(toUnit(lineTotal, vatFree)),
+        IsVatFree: vatFree,
+      };
+    });
+
+    const payments = input.payments ?? [];
+    const cashAgorot = payments.filter((p) => p.method === 'CASH').reduce((a, p) => a + p.amountAgorot, 0);
+    const externalPayments = payments
+      .filter((p) => p.method !== 'CASH')
+      .map((p) => ({
+        date: isoDateOnly(p.date),
+        description: PAYMENT_DESCRIPTIONS[p.method],
+        reference: p.reference,
+        amount: toShekels(p.amountAgorot),
+      }));
+    const valueDate = payments.length
+      ? isoDateOnly(payments.reduce((min, p) => (p.date < min ? p.date : min), payments[0].date))
+      : undefined;
 
     if (this.isDryRun()) {
       throw new Error(
@@ -131,10 +174,15 @@ export class CardcomProvider implements InvoiceProvider {
       comments: input.comments,
       isVatFree: input.isVatFree,
       documentDate: input.issueDate ? isoDateOnly(input.issueDate) : undefined,
+      valueDate,
       externalId: input.externalId,
       products,
+      ...(cashAgorot > 0 ? { cash: toShekels(cashAgorot) } : {}),
+      ...(externalPayments.length ? { externalPayments } : {}),
     });
 
+    // המפתח שבו הסנכרון מזהה מסמכים: מסוף:סוג:מספר (ראו mapCardcomDocument)
+    const typeId = Object.entries(CARDCOM_DOC_TYPE_BY_ID).find(([, name]) => name === result.documentType)?.[0];
     return {
       providerName: this.name,
       documentNumber: String(result.documentNumber),
@@ -142,6 +190,7 @@ export class CardcomProvider implements InvoiceProvider {
       documentUrl: result.documentUrl,
       // קארדקום מטפלת מול רשות המסים בהקצאה, אך אינה מחזירה את המספר בתשובה הזו.
       allocationNumber: null,
+      externalId: typeId ? `${this.getConfig().terminalNumber}:${typeId}:${result.documentNumber}` : null,
       raw: result,
     };
   }
@@ -163,6 +212,7 @@ export class CardcomProvider implements InvoiceProvider {
       documentKind: CARDCOM_DOC_TYPE_BY_ID[result.newDocumentType] ?? String(result.newDocumentType),
       documentUrl: null,
       allocationNumber: null,
+      externalId: `${this.getConfig().terminalNumber}:${result.newDocumentType}:${result.newDocumentNumber}`,
       raw: result,
     };
   }
