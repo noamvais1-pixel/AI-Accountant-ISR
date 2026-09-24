@@ -52,6 +52,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
   });
 
   const pendingCount = documents.filter((d) => d.status === 'DRAFT').length;
+  const detailHref = `/income/taxable?year=${year}&period=${periodNo ?? 'all'}`;
 
   const totals = recognized.filter((d) => d.direction === 'INCOME').reduce(
     (acc, doc) => {
@@ -107,8 +108,8 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="עסקאות חייבות" value={formatILS(totals.net)} />
-        <Stat label="מע&quot;מ עסקאות" value={formatILS(totals.vat)} tone="brand" />
+        <Stat label="עסקאות חייבות" value={formatILS(totals.net)} href={detailHref} />
+        <Stat label="מע&quot;מ עסקאות" value={formatILS(totals.vat)} tone="brand" href={detailHref} />
         <Stat label="עסקאות פטורות / אפס" value={formatILS(totals.exempt)} />
       </div>
 

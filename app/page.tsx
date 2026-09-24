@@ -49,6 +49,7 @@ export default async function DashboardPage() {
   ]);
 
   const currentReport = buildVatReport(current, currentDocs);
+  const taxableHref = `/income/taxable?year=${current.year}&period=${current.periodNo}`;
   const reportingReport = buildVatReport(reporting, reportingDocs);
 
   const reportingPeriodRecord = await prisma.vatPeriod.findUnique({
@@ -92,8 +93,8 @@ export default async function DashboardPage() {
       <section>
         <h2 className="mb-3 text-sm font-semibold text-[var(--muted)]">התקופה הנוכחית — {current.label}</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="עסקאות חייבות" value={formatILS(currentReport.taxableSalesNet)} />
-          <Stat label="מע&quot;מ עסקאות" value={formatILS(currentReport.taxableSalesVat)} />
+          <Stat label="עסקאות חייבות" value={formatILS(currentReport.taxableSalesNet)} href={taxableHref} />
+          <Stat label="מע&quot;מ עסקאות" value={formatILS(currentReport.taxableSalesVat)} href={taxableHref} />
           <Stat label="מע&quot;מ תשומות" value={formatILS(currentReport.totalInputsVat)} />
           <Stat
             label={currentReport.vatDue >= 0 ? 'צפי לתשלום' : 'צפי להחזר'}

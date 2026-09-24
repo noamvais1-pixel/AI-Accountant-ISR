@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 
 export function Panel({
   children,
@@ -31,11 +32,14 @@ export function Stat({
   value,
   hint,
   tone = 'neutral',
+  href,
 }: {
   label: string;
   value: ReactNode;
   hint?: ReactNode;
   tone?: 'neutral' | 'positive' | 'negative' | 'brand';
+  /** כרטיס שמוביל לפירוט — המספר צריך להיות ניתן לבדיקה, לא רק לקריאה */
+  href?: string;
 }) {
   const toneClass = {
     neutral: 'text-[var(--text)]',
@@ -44,13 +48,25 @@ export function Stat({
     brand: 'text-brand-600 dark:text-brand-400',
   }[tone];
 
-  return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--panel)] px-5 py-4 shadow-sm">
-      <div className="text-xs font-medium text-[var(--muted)]">{label}</div>
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-2 text-xs font-medium text-[var(--muted)]">
+        <span>{label}</span>
+        {href && <span aria-hidden className="text-[10px]">פירוט ←</span>}
+      </div>
       <div className={`mt-1.5 text-2xl font-semibold ltr-num ${toneClass}`}>{value}</div>
       {hint && <div className="mt-1 text-xs text-[var(--muted)]">{hint}</div>}
-    </div>
+    </>
   );
+  const box = 'block rounded-xl border border-[var(--border)] bg-[var(--panel)] px-5 py-4 shadow-sm';
+  if (href) {
+    return (
+      <Link href={href} className={`${box} transition-colors hover:border-brand-500 hover:bg-ink-50/60 dark:hover:bg-ink-900/40`}>
+        {body}
+      </Link>
+    );
+  }
+  return <div className={box}>{body}</div>;
 }
 
 const BADGE_TONES = {
