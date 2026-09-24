@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { getInvoiceProvider } from '../invoicing';
-import { cardcomConfigFromEnv, listTransactions } from '../cardcom/client';
+import { listTransactions } from '../cardcom/client';
+import { cardcomConfigFor } from '../cardcom/config';
 import { indexByDocument } from '../cardcom/payment-date';
 import { syncSchedule } from './recognition';
 import { pickReversedDocument } from '../reversals';
@@ -79,8 +80,9 @@ export async function syncCardcomDocuments(args: {
   toDate: Date;
 }): Promise<SyncResult> {
   const result: SyncResult = { fetched: 0, created: 0, updated: 0, skipped: 0, errors: [] };
-  const provider = getInvoiceProvider();
   const business = await prisma.business.findUniqueOrThrow({ where: { id: args.businessId } });
+  const provider = getInvoiceProvider(business);
+  if (!provider.isConfigured()) throw new Error('קארדקום אינה מחוברת לעסק הזה.');
 
   // עסקאות האשראי מצביעות על המסמך ששולם בהן, ומועד החיוב שלהן הוא מועד
   // התשלום המדויק. הטווח מתחיל שנה לפני המסמכים: חשבונית מופקת לעיתים חודשים
@@ -91,7 +93,7 @@ export async function syncCardcomDocuments(args: {
   let transactionsLoaded = false;
   try {
     byDocument = indexByDocument(
-      await listTransactions(cardcomConfigFromEnv(), { fromDate: iso(yearBefore), toDate: iso(args.toDate) }),
+      await listTransactions(cardcomConfigFor(business), { fromDate: iso(yearBefore), toDate: iso(args.toDate) }),
     );
     transactionsLoaded = true;
   } catch (error) {
@@ -303,7 +305,8 @@ export async function enrichInstallments(args: {
   toDate: Date;
 }): Promise<{ transactions: number; matched: number }> {
   const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const transactions = (await listTransactions(cardcomConfigFromEnv(), {
+  const business = await prisma.business.findUniqueOrThrow({ where: { id: args.businessId } });
+  const transactions = (await listTransactions(cardcomConfigFor(business), {
     fromDate: iso(args.fromDate),
     toDate: iso(args.toDate),
   })).filter((t) => t.installments > 1);

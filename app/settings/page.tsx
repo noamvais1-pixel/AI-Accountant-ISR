@@ -6,6 +6,10 @@ import { DriveImportPanel } from './drive-import-panel';
 import { getInvoiceProvider } from '@/lib/invoicing';
 import { Panel, Alert, Badge } from '@/components/ui';
 import { BusinessForm } from './business-form';
+import { MembersPanel } from './members-panel';
+import Link from 'next/link';
+import { membersOf } from '@/lib/services/business';
+import { apiUser } from '@/lib/auth/server';
 import { formatDateTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +32,6 @@ export default async function SettingsPage({
   searchParams: Promise<{ driveConnected?: string; driveError?: string }>;
 }) {
   const business = await getActiveBusinessOrNull();
-  const provider = getInvoiceProvider();
   const params = await searchParams;
 
   const [pendingBackup, backedUp] = business
@@ -38,8 +41,10 @@ export default async function SettingsPage({
       ])
     : [0, 0];
 
+  const members = business ? await membersOf(business.id) : [];
+  const me = (await apiUser())?.email?.toLowerCase() ?? '';
   const hasGemini = Boolean(process.env.GEMINI_API_KEY);
-  const hasCardcom = provider.isConfigured();
+  const hasCardcom = business ? getInvoiceProvider(business).isConfigured() : false;
   const dryRun = process.env.CARDCOM_DRY_RUN !== 'false';
 
   return (
@@ -51,13 +56,19 @@ export default async function SettingsPage({
 
       {!business && (
         <Alert tone="info" title="ברוכה הבאה">
-          כדי להתחיל, מלאי את פרטי העסק. מספר העוסק נדרש לכל דוח מע"מ ולקובץ הדיווח המקוון.
+          <Link href="/onboarding" className="underline">פתחי את העסק שלך</Link> — כמה פרטים, ובקשה לחשבון סליקה.
         </Alert>
       )}
 
       <Panel title="פרטי העסק">
         <BusinessForm business={business} />
       </Panel>
+
+      {business && (
+        <Panel title="מי בעסק">
+          <MembersPanel members={members} me={me} />
+        </Panel>
+      )}
 
       <Panel title="חיבורים">
         <ConfigRow
@@ -70,8 +81,8 @@ export default async function SettingsPage({
           ok={hasCardcom}
           detail={
             hasCardcom
-              ? `מסוף ${process.env.CARDCOM_TERMINAL_NUMBER}${business?.cardcomLastSyncAt ? ` · סונכרן לאחרונה ${formatDateTime(business.cardcomLastSyncAt)}` : ' · טרם סונכרן'}`
-              : 'הוסיפי CARDCOM_TERMINAL_NUMBER, CARDCOM_API_NAME ו-CARDCOM_API_PASSWORD לקובץ .env.local'
+              ? `מסוף ${business?.cardcomTerminal ?? process.env.CARDCOM_TERMINAL_NUMBER ?? ''}${dryRun ? ' · מצב בטיחות: הפקה חסומה' : ''}${business?.cardcomLastSyncAt ? ` · סונכרן לאחרונה ${formatDateTime(business.cardcomLastSyncAt)}` : ' · טרם סונכרן'}`
+              : 'חברי את קארדקום במסך פתיחת העסק, צעד "סליקה"'
           }
         />
         <ConfigRow

@@ -112,11 +112,11 @@ export function mapCardcomDocument(doc: CardcomDocument): ProviderDocument | nul
 export class CardcomProvider implements InvoiceProvider {
   readonly name = 'cardcom';
 
-  private config: CardcomConfig | null = null;
+  /** בלי config — משתני הסביבה (העסק הראשון). עם config — המסוף של אותו עסק. */
+  constructor(private readonly config: CardcomConfig | null = null) {}
 
   private getConfig(): CardcomConfig {
-    this.config ??= cardcomConfigFromEnv();
-    return this.config;
+    return this.config ?? cardcomConfigFromEnv();
   }
 
   isConfigured(): boolean {

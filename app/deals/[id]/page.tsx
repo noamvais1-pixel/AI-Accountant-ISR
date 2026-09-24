@@ -20,7 +20,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
   if (!business) {
     return (
       <Alert tone="info" title="לא הוגדר עסק">
-        <Link href="/settings" className="underline">הזיני קודם את פרטי העסק</Link>.
+        <Link href="/onboarding" className="underline">פתחי קודם את העסק שלך</Link>.
       </Alert>
     );
   }
@@ -190,7 +190,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             <IssueForm
               dealId={deal.id}
               charges={uninvoiced.map((c) => ({ id: c.id, label: `${formatDate(c.paidAt)} · ${PAYMENT_METHOD_LABELS[c.method]} · ${formatILS(c.amountAgorot)}` }))}
-              configured={getInvoiceProvider().isConfigured()}
+              configured={getInvoiceProvider(business).isConfigured()}
               dryRun={dryRun}
             />
           </div>

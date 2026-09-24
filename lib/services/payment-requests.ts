@@ -1,5 +1,6 @@
 import { prisma } from '../db';
-import { cardcomConfigFromEnv, createLowProfile, getLowProfileResult } from '../cardcom/client';
+import { createLowProfile, getLowProfileResult } from '../cardcom/client';
+import { cardcomConfigFor } from '../cardcom/config';
 import { unitPriceForTerminal } from '../invoicing/cardcom-provider';
 import { interpretLowProfileResult } from '../payments/lowprofile';
 import { dealProgress } from '../deals';
@@ -54,7 +55,7 @@ export async function createPaymentRequest(
   const isVatFree = deal.vatTreatment !== 'STANDARD';
   const unitCost = unitPriceForTerminal(input.amountAgorot, { rateBp: deal.vatRateBp, vatFree: isVatFree, includesVat: true }) / 100;
   try {
-    const page = await createLowProfile(cardcomConfigFromEnv(), {
+    const page = await createLowProfile(cardcomConfigFor(deal.business), {
       amountAgorot: input.amountAgorot,
       returnValue: request.id,
       productName: deal.description,
@@ -98,7 +99,7 @@ export async function settlePaymentRequest(requestId: string): Promise<SettleRes
   if (request.status === 'PAID' || request.status === 'CANCELLED') return { status: request.status };
   if (!request.lowProfileId) return { status: request.status, reason: 'אין דף תשלום' };
 
-  const result = await getLowProfileResult(cardcomConfigFromEnv(), request.lowProfileId);
+  const result = await getLowProfileResult(cardcomConfigFor(request.deal.business), request.lowProfileId);
   const outcome = interpretLowProfileResult(result, request.amountAgorot);
 
   if (outcome.outcome === 'pending') return { status: request.status };
@@ -124,7 +125,7 @@ export async function settlePaymentRequest(requestId: string): Promise<SettleRes
 
   try {
     const deal = request.deal;
-    const config = cardcomConfigFromEnv();
+    const config = cardcomConfigFor(deal.business);
     const charge = await prisma.dealCharge.create({
       data: {
         dealId: deal.id,

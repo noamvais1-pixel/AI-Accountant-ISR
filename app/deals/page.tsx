@@ -14,7 +14,7 @@ export default async function DealsPage() {
   if (!business) {
     return (
       <Alert tone="info" title="לא הוגדר עסק">
-        <Link href="/settings" className="underline">הזיני קודם את פרטי העסק</Link>.
+        <Link href="/onboarding" className="underline">פתחי קודם את העסק שלך</Link>.
       </Alert>
     );
   }

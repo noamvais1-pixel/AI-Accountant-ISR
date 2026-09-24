@@ -13,8 +13,14 @@ export function allowedEmails(): string[] {
     .filter(Boolean);
 }
 
+/** הרשמה חופשית: כל מי שאימתה את המייל שלה נכנסת, ורואה רק את העסק שלה. */
+export function openSignup(): boolean {
+  return process.env.OPEN_SIGNUP === 'true';
+}
+
 export function isAllowed(email: string | null | undefined): boolean {
   if (!email) return false;
+  if (openSignup()) return true;
   const list = allowedEmails();
   // רשימה ריקה חוסמת הכל. ברירת מחדל פתוחה כאן היא בדיוק התקלה שאסור שתקרה
   // בפריסה שבה שכחו להגדיר משתנה סביבה.

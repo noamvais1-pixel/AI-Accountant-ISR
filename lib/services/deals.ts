@@ -108,7 +108,7 @@ export type IssueForChargesInput = {
  * הסכום במסמך הוא בדיוק סכום התקבולים; שורות התשלום במסמך הן התקבולים עצמם.
  */
 export async function issueDocumentForCharges(businessId: string, dealId: string, input: IssueForChargesInput) {
-  const deal = await prisma.deal.findFirst({ where: { id: dealId, businessId }, include: { charges: { orderBy: { paidAt: 'asc' } } } });
+  const deal = await prisma.deal.findFirst({ where: { id: dealId, businessId }, include: { charges: { orderBy: { paidAt: 'asc' } }, business: true } });
   if (!deal) throw new Error('העסקה לא נמצאה.');
   const charges = deal.charges.filter((c) => input.chargeIds.includes(c.id));
   if (charges.length === 0) throw new Error('יש לבחור לפחות תקבול אחד.');
@@ -126,8 +126,8 @@ export async function issueDocumentForCharges(businessId: string, dealId: string
     reference: c.reference ?? undefined,
   }));
 
-  const provider = getInvoiceProvider();
-  if (!provider.isConfigured()) throw new Error('ספק החשבוניות אינו מוגדר.');
+  const provider = getInvoiceProvider(deal.business);
+  if (!provider.isConfigured()) throw new Error('קארדקום אינה מחוברת לעסק הזה.');
 
   const issueDate = new Date();
   const issued = await provider.issueInvoice({

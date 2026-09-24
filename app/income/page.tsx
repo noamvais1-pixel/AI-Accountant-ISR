@@ -20,8 +20,8 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
   if (!business) {
     return (
       <Alert tone="info" title="לא הוגדר עסק">
-        <Link href="/settings" className="underline">
-          הזיני קודם את פרטי העסק
+        <Link href="/onboarding" className="underline">
+          פתחי קודם את העסק שלך
         </Link>
         .
       </Alert>
@@ -87,7 +87,7 @@ export default async function IncomePage({ searchParams }: { searchParams: Promi
       </div>
 
       <SyncPanel
-        configured={getInvoiceProvider().isConfigured()}
+        configured={getInvoiceProvider(business).isConfigured()}
         // מתחילת השנה: הסנכרון בטוח לחזרה, ותקופה בודדת מפספסת חשבוניות שנוספו באיחור
         defaultFrom={toDateInputValue(new Date(Date.UTC(current.year, 0, 1)))}
         defaultTo={toDateInputValue(new Date())}

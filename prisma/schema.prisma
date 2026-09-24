@@ -42,10 +42,19 @@ model Business {
   phone   String?
   email   String?
 
-  // קארדקום — מזהי מסוף. הסודות (ApiName/ApiPassword) נשמרים במשתני סביבה, לא ב-DB.
+  // קארדקום — לכל עסק המסוף שלו. הסיסמה מוצפנת (AES-GCM, מפתח ב-CREDENTIALS_KEY);
+  // עסק בלי פרטים משלו נופל למשתני הסביבה רק אם המסוף שלו הוא המסוף שבסביבה.
   cardcomTerminal       String?
+  cardcomApiName        String?
+  cardcomApiPasswordEnc String?
   cardcomLastSyncAt     DateTime?
   cardcomDefaultDocType String    @default("TaxInvoiceAndReceipt")
+
+  // הלוגו של העסק (לדף התשלום ולמסמכים שיופקו עצמאית בעתיד)
+  logoFileKey String?
+
+  members     BusinessMember[]
+  application MerchantApplication?
 
   // גוגל דרייב — גיבוי הצילומים.
   // ה-refresh token נשמר כאן ולא ב-env כי הוא נוצר בזמן ריצה בתהליך ההרשאה,
@@ -444,4 +453,90 @@ model PaymentRequest {
   @@index([dealId, createdAt])
   @@index([businessId, status])
   @@map("payment_requests")
+}
+
+// ---------------------------------------------------------------------------
+// ריבוי עסקים: מי רשאי לראות איזה עסק
+// ---------------------------------------------------------------------------
+
+enum MemberRole {
+  OWNER
+  ACCOUNTANT
+}
+
+model BusinessMember {
+  id         String     @id @default(cuid())
+  businessId String
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  email      String // באותיות קטנות; זה המפתח שמחבר בין ההתחברות לעסק
+  role       MemberRole @default(OWNER)
+  createdAt  DateTime   @default(now())
+
+  @@unique([businessId, email])
+  @@index([email])
+  @@map("business_members")
+}
+
+// ---------------------------------------------------------------------------
+// בקשה לפתיחת חשבון סליקה אצל הסולק (דרך הסכם השותפים)
+// ---------------------------------------------------------------------------
+
+enum ApplicationStatus {
+  DRAFT // בהזנה
+  READY // הוזן הכל, ממתין לשליחה
+  SUBMITTED // נשלח לסולק
+  APPROVED // הסולק אישר ופתח מסוף
+  REJECTED
+}
+
+model MerchantApplication {
+  id         String            @id @default(cuid())
+  businessId String            @unique
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status     ApplicationStatus @default(DRAFT)
+
+  // בעלת העסק (KYC)
+  ownerFirstName      String?
+  ownerLastName       String?
+  ownerIdentityNumber String?
+  ownerIdIssueDate    DateTime?
+  ownerBirthDate      DateTime?
+  ownerPhone          String?
+  ownerEmail          String?
+  ownerStreet         String?
+  ownerHouseNumber    String?
+  ownerCity           String?
+  ownerZip            String?
+
+  // כתובת העסק (מפורקת, כי הסולק דורש קודי עיר ורחוב)
+  street      String?
+  houseNumber String?
+  zip         String?
+  activity    String? // תחום הפעילות
+  websiteUrl  String?
+  maxInstallments Int @default(12)
+
+  // חשבון בנק לזיכויים
+  bankCode      String?
+  bankBranch    String?
+  bankAccount   String?
+
+  // מסמכים (מפתחות בקבצים; הקבצים עצמם באחסון הפרטי)
+  idFileKey          String?
+  bankFileKey        String?
+  certificateFileKey String?
+
+  // שאלון הכר-את-הלקוח של הסולק: היקפים צפויים, ניסיון קודם וכדומה
+  kycAnswers Json?
+
+  // תשובת הסולק
+  cardcomCompanyInternalId String?
+  cardcomResponse          Json?
+  submittedAt              DateTime?
+  notes                    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("merchant_applications")
 }

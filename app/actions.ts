@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
+import { requireUser } from '@/lib/auth/server';
 import { getActiveBusiness, getActiveBusinessOrNull } from '@/lib/services/business';
 import { assignToPeriod } from '@/lib/services/documents';
 import { syncCardcomDocuments } from '@/lib/services/sync-cardcom';
@@ -266,9 +267,9 @@ export async function deleteDocument(id: string): Promise<ActionResult> {
 export async function syncCardcom(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   try {
     const business = await getActiveBusiness();
-    const provider = getInvoiceProvider();
+    const provider = getInvoiceProvider(business);
     if (!provider.isConfigured()) {
-      return { ok: false, error: 'פרטי קארדקום חסרים. יש להשלים אותם בקובץ .env.local ולהפעיל מחדש את השרת.' };
+      return { ok: false, error: 'קארדקום אינה מחוברת לעסק הזה. חברי אותה במסך ההגדרות.' };
     }
 
     const fromDate = parseDateInput(str(form, 'fromDate'));
@@ -314,9 +315,9 @@ export async function syncCardcom(_prev: ActionResult | null, form: FormData): P
 export async function issueInvoice(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   try {
     const business = await getActiveBusiness();
-    const provider = getInvoiceProvider();
+    const provider = getInvoiceProvider(business);
     if (!provider.isConfigured()) {
-      return { ok: false, error: 'פרטי קארדקום חסרים. יש להשלים אותם בקובץ .env.local ולהפעיל מחדש את השרת.' };
+      return { ok: false, error: 'קארדקום אינה מחוברת לעסק הזה. חברי אותה במסך ההגדרות.' };
     }
 
     const customerVatId = normalizeVatId(str(form, 'customerVatId'));
@@ -768,5 +769,247 @@ export async function createTerminalChargeAction(_prev: ActionResult | null, for
     return { ok: true, data: { id: request.id, url: request.payUrl } };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'פתיחת המסוף נכשלה.' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// פתיחת עסק ובקשת סליקה (onboarding)
+// ---------------------------------------------------------------------------
+
+async function ownedApplication() {
+  const { getActiveBusinessOrThrow } = await import('@/lib/services/business');
+  const { applicationFor } = await import('@/lib/services/onboarding');
+  const business = await getActiveBusinessOrThrow();
+  const app = await applicationFor(business.id);
+  return { business, app };
+}
+
+function parseOptionalDate(value: string): Date | null {
+  return value ? parseDateInput(value) : null;
+}
+
+/** צעד 1: פתיחת העסק (או עדכונו) ושיוך המשתמשת כבעלים. */
+export async function onboardingBusinessAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const { getActiveBusinessOrNull } = await import('@/lib/services/business');
+    const { applicationFor } = await import('@/lib/services/onboarding');
+    const { saveUpload, isAllowedMime } = await import('@/lib/storage');
+
+    const name = str(form, 'name');
+    const vatId = normalizeVatId(str(form, 'vatId'));
+    if (!name) return { ok: false, error: 'יש להזין את שם העסק.' };
+    if (!vatId || !isValidIsraeliId(vatId)) return { ok: false, error: 'מספר העוסק אינו תקין.' };
+    const city = str(form, 'city');
+    const street = str(form, 'street');
+    if (!city || !street) return { ok: false, error: 'יש להזין עיר ורחוב.' };
+
+    let logoFileKey: string | undefined;
+    const logo = form.get('logo');
+    if (logo instanceof File && logo.size > 0) {
+      if (!logo.type.startsWith('image/') || !isAllowedMime(logo.type)) return { ok: false, error: 'הלוגו חייב להיות תמונה (JPG/PNG/WebP).' };
+      if (logo.size > 3 * 1024 * 1024) return { ok: false, error: 'הלוגו גדול מדי (עד 3MB).' };
+      logoFileKey = (await saveUpload(logo)).key;
+    }
+
+    const data = {
+      name,
+      vatId,
+      legalType: (str(form, 'legalType') || 'OSEK_MURSHE') as LegalType,
+      vatFrequency: (str(form, 'vatFrequency') || 'BIMONTHLY') as VatFrequency,
+      address: [street, str(form, 'houseNumber')].filter(Boolean).join(' '),
+      city,
+      phone: optionalStr(form, 'phone'),
+      email: optionalStr(form, 'email') ?? user.email,
+      ...(logoFileKey ? { logoFileKey } : {}),
+    };
+
+    let business = await getActiveBusinessOrNull();
+    if (business) {
+      business = await prisma.business.update({ where: { id: business.id }, data });
+    } else {
+      const taken = await prisma.business.findUnique({ where: { vatId } });
+      if (taken) return { ok: false, error: 'עסק עם מספר העוסק הזה כבר קיים במערכת. אם הוא שלך, בקשי מבעלת העסק לצרף אותך.' };
+      business = await prisma.business.create({
+        data: { ...data, members: { create: { email: user.email.toLowerCase(), role: 'OWNER' } } },
+      });
+    }
+    const app = await applicationFor(business.id);
+    await prisma.merchantApplication.update({
+      where: { id: app.id },
+      data: {
+        street,
+        houseNumber: optionalStr(form, 'houseNumber'),
+        zip: optionalStr(form, 'zip'),
+        activity: optionalStr(form, 'activity'),
+        websiteUrl: optionalStr(form, 'websiteUrl'),
+      },
+    });
+    revalidatePath('/', 'layout');
+    return { ok: true, message: 'פרטי העסק נשמרו.', data: { next: 'owner' } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'השמירה נכשלה.' };
+  }
+}
+
+/** צעד 2: בעלת העסק. */
+export async function onboardingOwnerAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const { app } = await ownedApplication();
+    const identity = normalizeVatId(str(form, 'ownerIdentityNumber'));
+    if (!identity || !isValidIsraeliId(identity)) return { ok: false, error: 'מספר תעודת הזהות אינו תקין.' };
+    const birth = parseOptionalDate(str(form, 'ownerBirthDate'));
+    if (!birth || Date.now() - birth.getTime() < 18 * 365.25 * 24 * 3600 * 1000) return { ok: false, error: 'בעלת העסק חייבת להיות מעל גיל 18.' };
+    const sameAddress = form.get('sameAddress') === 'on';
+    await prisma.merchantApplication.update({
+      where: { id: app.id },
+      data: {
+        ownerFirstName: str(form, 'ownerFirstName') || null,
+        ownerLastName: str(form, 'ownerLastName') || null,
+        ownerIdentityNumber: identity,
+        ownerIdIssueDate: parseOptionalDate(str(form, 'ownerIdIssueDate')),
+        ownerBirthDate: birth,
+        ownerPhone: optionalStr(form, 'ownerPhone'),
+        ownerEmail: optionalStr(form, 'ownerEmail'),
+        ownerStreet: sameAddress ? null : optionalStr(form, 'ownerStreet'),
+        ownerHouseNumber: sameAddress ? null : optionalStr(form, 'ownerHouseNumber'),
+        ownerCity: sameAddress ? null : optionalStr(form, 'ownerCity'),
+        ownerZip: sameAddress ? null : optionalStr(form, 'ownerZip'),
+      },
+    });
+    revalidatePath('/onboarding');
+    return { ok: true, message: 'הפרטים נשמרו.', data: { next: 'bank' } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'השמירה נכשלה.' };
+  }
+}
+
+/** צעד 3: חשבון בנק ושאלון. */
+export async function onboardingBankAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const { app } = await ownedApplication();
+    const bankCode = str(form, 'bankCode');
+    const branch = str(form, 'bankBranch').replace(/\D/g, '');
+    const account = str(form, 'bankAccount').replace(/\D/g, '');
+    if (!bankCode || !branch || !account) return { ok: false, error: 'יש להזין בנק, סניף ומספר חשבון.' };
+    const kyc = {
+      monthlyTransactions: num(form, 'monthlyTransactions'),
+      averageAmount: num(form, 'averageAmount'),
+      maxAmount: num(form, 'maxAmount'),
+      typicalInstallments: num(form, 'typicalInstallments'),
+      clearedBefore: form.get('clearedBefore') === 'on',
+    };
+    await prisma.merchantApplication.update({
+      where: { id: app.id },
+      data: { bankCode, bankBranch: branch, bankAccount: account, maxInstallments: Number(str(form, 'maxInstallments') || '12'), kycAnswers: kyc },
+    });
+    revalidatePath('/onboarding');
+    return { ok: true, message: 'הפרטים נשמרו.', data: { next: 'documents' } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'השמירה נכשלה.' };
+  }
+}
+
+/** צעד 4: מסמכים. */
+export async function onboardingDocumentsAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const { app } = await ownedApplication();
+    const { saveUpload, isAllowedMime } = await import('@/lib/storage');
+    const data: Record<string, string> = {};
+    for (const [field, key] of [['idFile', 'idFileKey'], ['bankFile', 'bankFileKey'], ['certificateFile', 'certificateFileKey']] as const) {
+      const f = form.get(field);
+      if (f instanceof File && f.size > 0) {
+        if (!isAllowedMime(f.type)) return { ok: false, error: 'המסמכים חייבים להיות PDF או תמונה.' };
+        if (f.size > 15 * 1024 * 1024) return { ok: false, error: 'קובץ גדול מדי (עד 15MB).' };
+        data[key] = (await saveUpload(f)).key;
+      }
+    }
+    if (Object.keys(data).length) await prisma.merchantApplication.update({ where: { id: app.id }, data });
+    revalidatePath('/onboarding');
+    return { ok: true, message: 'המסמכים נשמרו.', data: { next: 'connect' } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'השמירה נכשלה.' };
+  }
+}
+
+/** צעד 5א: חיבור חשבון קארדקום קיים. */
+export async function connectCardcomAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const { getActiveBusinessOrThrow } = await import('@/lib/services/business');
+    const { connectExistingCardcom } = await import('@/lib/services/onboarding');
+    const business = await getActiveBusinessOrThrow();
+    await connectExistingCardcom(business.id, { terminal: str(form, 'terminal'), apiName: str(form, 'apiName'), apiPassword: String(form.get('apiPassword') ?? '') });
+    revalidatePath('/', 'layout');
+    return { ok: true, message: 'קארדקום חוברה. המסמכים יימשכו מהמסוף הזה.' };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'החיבור נכשל.' };
+  }
+}
+
+export async function disconnectCardcomAction(): Promise<ActionResult> {
+  try {
+    const { getActiveBusinessOrThrow } = await import('@/lib/services/business');
+    const { disconnectCardcom } = await import('@/lib/services/onboarding');
+    const business = await getActiveBusinessOrThrow();
+    await disconnectCardcom(business.id);
+    revalidatePath('/', 'layout');
+    return { ok: true, message: 'החיבור נותק.' };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'הניתוק נכשל.' };
+  }
+}
+
+/** צעד 5ב: שליחת בקשה לפתיחת חשבון סליקה דרך השותפות. */
+export async function submitApplicationAction(): Promise<ActionResult> {
+  try {
+    const { business, app } = await ownedApplication();
+    const { completedSteps } = await import('@/lib/services/onboarding');
+    const done = completedSteps(business, app);
+    const missing = (['business', 'owner', 'bank', 'documents'] as const).filter((s) => !done[s]);
+    if (missing.length) return { ok: false, error: 'יש להשלים קודם את כל הצעדים: העסק, בעלת העסק, חשבון הבנק והמסמכים.' };
+    const { submitToCardcom } = await import('@/lib/cardcom/onboarding');
+    const result = await submitToCardcom(business, app);
+    await prisma.merchantApplication.update({
+      where: { id: app.id },
+      data: result.sent
+        ? { status: 'SUBMITTED', submittedAt: new Date(), cardcomCompanyInternalId: result.companyInternalId ?? null, cardcomResponse: (result.response ?? null) as object }
+        : { status: 'READY' },
+    });
+    revalidatePath('/onboarding');
+    return { ok: true, message: result.message };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'השליחה נכשלה.' };
+  }
+}
+
+/** צירוף חברה לעסק (למשל רואת החשבון). */
+export async function addMemberAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const { getActiveBusinessOrThrow } = await import('@/lib/services/business');
+    const business = await getActiveBusinessOrThrow();
+    const email = str(form, 'email').toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: 'כתובת מייל לא תקינה.' };
+    const role = str(form, 'role') === 'OWNER' ? 'OWNER' : 'ACCOUNTANT';
+    await prisma.businessMember.upsert({ where: { businessId_email: { businessId: business.id, email } }, update: { role }, create: { businessId: business.id, email, role } });
+    revalidatePath('/settings');
+    return { ok: true, message: `${email} צורפה לעסק.` };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'הצירוף נכשל.' };
+  }
+}
+
+export async function removeMemberAction(id: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const { getActiveBusinessOrThrow } = await import('@/lib/services/business');
+    const business = await getActiveBusinessOrThrow();
+    const member = await prisma.businessMember.findFirst({ where: { id, businessId: business.id } });
+    if (!member) return { ok: false, error: 'לא נמצא.' };
+    if (member.email === user.email.toLowerCase()) return { ok: false, error: 'אי אפשר להסיר את עצמך.' };
+    await prisma.businessMember.delete({ where: { id } });
+    revalidatePath('/settings');
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'ההסרה נכשלה.' };
   }
 }

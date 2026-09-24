@@ -12,15 +12,15 @@ export default async function NewInvoicePage() {
   if (!business) {
     return (
       <Alert tone="info" title="לא הוגדר עסק">
-        <Link href="/settings" className="underline">
-          הזיני קודם את פרטי העסק
+        <Link href="/onboarding" className="underline">
+          פתחי קודם את העסק שלך
         </Link>
         .
       </Alert>
     );
   }
 
-  const provider = getInvoiceProvider();
+  const provider = getInvoiceProvider(business);
   if (!provider.isConfigured()) {
     return (
       <Alert tone="warning" title="קארדקום אינה מחוברת">

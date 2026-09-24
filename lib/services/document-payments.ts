@@ -1,6 +1,7 @@
 import { prisma } from '../db';
 import { readUpload, saveBytes } from '../storage';
-import { cardcomConfigFromEnv, getDocumentUrl, CARDCOM_DOC_TYPE_BY_ID } from '../cardcom/client';
+import { getDocumentUrl, CARDCOM_DOC_TYPE_BY_ID } from '../cardcom/client';
+import { cardcomConfigFor } from '../cardcom/config';
 import { extractPdfLines } from '../parsers/pdf-lines';
 import { parseCardcomDocumentLines, paymentsTotal, type ParsedPayment } from '../parsers/cardcom-document';
 import { assignToPeriod } from './documents';
@@ -33,7 +34,8 @@ async function documentBytes(doc: Document): Promise<{ bytes: Buffer; fileKey: s
   const raw = doc.ocrRaw as { InvoiceType?: number } | null;
   const typeName = raw?.InvoiceType != null ? CARDCOM_DOC_TYPE_BY_ID[raw.InvoiceType] : null;
   if (!typeName) throw new Error('סוג המסמך בקארדקום אינו ידוע');
-  const url = await getDocumentUrl(cardcomConfigFromEnv(), { documentTypeName: typeName, documentNumber: Number(doc.number) });
+  const business = await prisma.business.findUniqueOrThrow({ where: { id: doc.businessId } });
+  const url = await getDocumentUrl(cardcomConfigFor(business), { documentTypeName: typeName, documentNumber: Number(doc.number) });
   const res = await fetch(url);
   if (!res.ok) throw new Error(`הורדת המסמך מקארדקום נכשלה (${res.status})`);
   const bytes = Buffer.from(await res.arrayBuffer());
