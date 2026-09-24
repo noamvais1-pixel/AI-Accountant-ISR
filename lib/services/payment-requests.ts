@@ -29,7 +29,7 @@ export function publicPayUrl(requestId: string): string {
 export async function createPaymentRequest(
   businessId: string,
   dealId: string,
-  input: { amountAgorot: number; maxInstallments: number; sendDocumentByEmail: boolean },
+  input: { amountAgorot: number; maxInstallments: number; sendDocumentByEmail: boolean; channel?: 'LINK' | 'TERMINAL' },
 ): Promise<PaymentRequest> {
   if (process.env.CARDCOM_DRY_RUN !== 'false') {
     throw new Error(
@@ -46,8 +46,9 @@ export async function createPaymentRequest(
     throw new Error(`הסכום (${(input.amountAgorot / 100).toFixed(2)}) גדול מהיתרה לתשלום (${(progress.remainingAgorot / 100).toFixed(2)}).`);
   }
 
+  const channel = input.channel ?? 'LINK';
   const request = await prisma.paymentRequest.create({
-    data: { businessId, dealId, amountAgorot: input.amountAgorot, maxInstallments: Math.max(1, Math.min(36, input.maxInstallments)) },
+    data: { businessId, dealId, channel, amountAgorot: input.amountAgorot, maxInstallments: Math.max(1, Math.min(36, input.maxInstallments)) },
   });
 
   const isVatFree = deal.vatTreatment !== 'STANDARD';
@@ -62,6 +63,7 @@ export async function createPaymentRequest(
       cancelUrl: publicPayUrl(request.id),
       webhookUrl: `${appUrl()}/api/cardcom/webhook`,
       maxInstallments: request.maxInstallments,
+      virtualTerminal: channel === 'TERMINAL',
       customer: {
         name: deal.customerName,
         taxId: deal.customerVatId ?? undefined,

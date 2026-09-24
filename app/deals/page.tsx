@@ -5,6 +5,7 @@ import { Panel, Alert, Badge, EmptyState, Stat } from '@/components/ui';
 import { formatILS } from '@/lib/money';
 import { formatDate } from '@/lib/format';
 import { dealProgress } from '@/lib/deals';
+import { LinkRow } from '@/components/link-row';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,7 +72,7 @@ export default async function DealsPage() {
               </thead>
               <tbody>
                 {rows.map(({ deal, progress }) => (
-                  <tr key={deal.id} className="border-b border-[var(--border)] last:border-0 hover:bg-ink-50/60 dark:hover:bg-ink-900/40">
+                  <LinkRow key={deal.id} href={`/deals/${deal.id}`} className="border-b border-[var(--border)] last:border-0 hover:bg-ink-50/60 dark:hover:bg-ink-900/40">
                     <td className="whitespace-nowrap px-4 py-2.5 ltr-num text-[var(--muted)]">{formatDate(deal.createdAt)}</td>
                     <td className="px-4 py-2.5 font-medium">
                       <Link href={`/deals/${deal.id}`} className="hover:underline">{deal.customerName}</Link>
@@ -97,7 +98,7 @@ export default async function DealsPage() {
                         <Badge tone="blue">פתוחה</Badge>
                       )}
                     </td>
-                  </tr>
+                  </LinkRow>
                 ))}
               </tbody>
             </table>

@@ -10,6 +10,7 @@ import { PAYMENT_METHOD_LABELS } from '@/lib/services/deals';
 import { getInvoiceProvider } from '@/lib/invoicing';
 import { ChargeForm, IssueForm, DealStatusButtons } from './deal-panels';
 import { PaymentLinks } from './payment-links';
+import { TerminalCharge } from './terminal-charge';
 import { publicPayUrl } from '@/lib/services/payment-requests';
 
 export const dynamic = 'force-dynamic';
@@ -114,6 +115,14 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
         </Panel>
       </div>
 
+      {deal.status === 'OPEN' && !progress.isPaid && (
+        <Panel title="חיוב כרטיס עכשיו (טלפוני)">
+          <div className="p-4">
+            <TerminalCharge dealId={deal.id} dryRun={dryRun} defaultAmount={(progress.nextDue?.amountAgorot ?? progress.remainingAgorot) / 100} />
+          </div>
+        </Panel>
+      )}
+
       <Panel title="קישור לתשלום בכרטיס">
         <div className="p-4">
           <PaymentLinks
@@ -122,7 +131,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
             canCreate={deal.status === 'OPEN' && !progress.isPaid}
             defaultAmount={(progress.nextDue?.amountAgorot ?? progress.remainingAgorot) / 100}
             defaultInstallments={1}
-            links={deal.paymentRequests.map((r) => ({
+            links={deal.paymentRequests.filter((r) => r.channel === 'LINK' || r.status === 'PAID').map((r) => ({
               id: r.id,
               url: publicPayUrl(r.id),
               amount: formatILS(r.amountAgorot),

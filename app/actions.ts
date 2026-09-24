@@ -749,3 +749,24 @@ export async function deleteDealAction(id: string): Promise<ActionResult> {
     return { ok: false, error: error instanceof Error ? error.message : 'המחיקה נכשלה.' };
   }
 }
+
+/** חיוב כרטיס במסוף הווירטואלי: בעלת העסק מזינה את הכרטיס בדף של הסולק, מתוך המערכת. */
+export async function createTerminalChargeAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const { createPaymentRequest } = await import('@/lib/services/payment-requests');
+    const dealId = str(form, 'dealId');
+    const amount = num(form, 'amount');
+    if (amount === null || amount <= 0) return { ok: false, error: 'יש להזין סכום לחיוב.' };
+    const request = await createPaymentRequest(business.id, dealId, {
+      amountAgorot: toAgorot(amount),
+      maxInstallments: Number(str(form, 'maxInstallments') || '1'),
+      sendDocumentByEmail: form.get('sendByEmail') !== 'off',
+      channel: 'TERMINAL',
+    });
+    revalidatePath(`/deals/${dealId}`);
+    return { ok: true, data: { id: request.id, url: request.payUrl } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'פתיחת המסוף נכשלה.' };
+  }
+}

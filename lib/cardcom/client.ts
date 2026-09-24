@@ -422,6 +422,8 @@ export type CreateLowProfileInput = {
   cancelUrl: string;
   webhookUrl: string;
   maxInstallments: number;
+  /** מסוף וירטואלי: בעלת העסק מזינה את הכרטיס (חיוב טלפוני), לא הלקוחה */
+  virtualTerminal?: boolean;
   customer: { name: string; taxId?: string; email?: string; phone?: string };
   document: {
     typeName: CardcomDocumentToCreate;
@@ -460,6 +462,7 @@ export async function createLowProfile(
     AdvancedDefinition: {
       MinNumOfPayments: 1,
       MaxNumOfPayments: Math.max(1, input.maxInstallments),
+      ...(input.virtualTerminal ? { VirtualTerminal: { IsEnable: true, IsOpenSum: false, ChargeOnSwipe: false } } : {}),
     },
     ...(input.document
       ? {

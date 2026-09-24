@@ -411,8 +411,16 @@ enum PaymentRequestStatus {
   CANCELLED // בוטל ידנית
 }
 
+// מי מזין את הכרטיס: הלקוחה בקישור שנשלח לה, או בעלת העסק במסוף הווירטואלי
+// (טלפונית). בשני המקרים הכרטיס מוזן בדף של הסולק, לא אצלנו.
+enum PaymentChannel {
+  LINK
+  TERMINAL
+}
+
 model PaymentRequest {
   id         String   @id @default(cuid())
+  channel    PaymentChannel @default(LINK)
   businessId String
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   dealId     String
