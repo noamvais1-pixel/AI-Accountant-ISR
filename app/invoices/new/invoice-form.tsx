@@ -24,12 +24,14 @@ export function InvoiceForm({ vatRateBp, today, dryRun }: { vatRateBp: number; t
   }
 
   // התצוגה המקדימה מחושבת בצד הלקוח בלבד. הסכום הקובע הוא זה שקארדקום תחזיר.
-  const netAgorot = lines.reduce((sum, line) => {
+  // המחירים מוזנים כולל מע"מ — כמו שהלקוחה רואה אותם — והנטו נגזר מהם.
+  const totalAgorot = lines.reduce((sum, line) => {
     const qty = Number(line.quantity) || 0;
     const price = Number(line.unitPrice) || 0;
     return sum + Math.round(price * 100 * qty);
   }, 0);
-  const vatAgorot = Math.round((netAgorot * vatRateBp) / 10000);
+  const netAgorot = Math.round((totalAgorot * 10000) / (10000 + vatRateBp));
+  const vatAgorot = totalAgorot - netAgorot;
 
   const issued = state?.ok ? (state.data as { documentUrl?: string; documentNumber?: string } | undefined) : undefined;
 
@@ -100,8 +102,8 @@ export function InvoiceForm({ vatRateBp, today, dryRun }: { vatRateBp: number; t
                   onChange={(e) => updateLine(line.id, { unitPrice: e.target.value })}
                   className={`${field} ltr-num`}
                   inputMode="decimal"
-                  placeholder="מחיר ליחידה"
-                  aria-label="מחיר ליחידה לפני מע״מ"
+                  placeholder="מחיר כולל מע״מ"
+                  aria-label="מחיר ליחידה כולל מע״מ"
                 />
                 <div className="flex items-center justify-end px-2 text-sm ltr-num text-[var(--muted)]">
                   {formatILS(lineTotal)}
@@ -120,20 +122,20 @@ export function InvoiceForm({ vatRateBp, today, dryRun }: { vatRateBp: number; t
           })}
         </div>
 
-        <p className="mt-2 text-xs text-[var(--muted)]">המחירים מוזנים לפני מע"מ.</p>
+        <p className="mt-2 text-xs text-[var(--muted)]">המחירים מוזנים כולל מע"מ.</p>
 
         <div className="mt-4 space-y-1 border-t border-[var(--border)] pt-4 text-sm">
-          <div className="flex justify-between">
-            <span className="text-[var(--muted)]">סה"כ לפני מע"מ</span>
-            <span className="ltr-num">{formatILS(netAgorot)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[var(--muted)]">מע"מ {formatRateBp(vatRateBp)}</span>
-            <span className="ltr-num">{formatILS(vatAgorot)}</span>
-          </div>
           <div className="flex justify-between text-base font-semibold">
             <span>סה"כ לתשלום</span>
-            <span className="ltr-num">{formatILS(netAgorot + vatAgorot)}</span>
+            <span className="ltr-num">{formatILS(totalAgorot)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--muted)]">מתוכו מע"מ {formatRateBp(vatRateBp)}</span>
+            <span className="ltr-num">{formatILS(vatAgorot)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--muted)]">לפני מע"מ</span>
+            <span className="ltr-num">{formatILS(netAgorot)}</span>
           </div>
         </div>
       </section>

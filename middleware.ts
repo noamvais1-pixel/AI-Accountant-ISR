@@ -3,7 +3,9 @@ import { createServerClient } from '@supabase/ssr';
 import { isAllowed } from '@/lib/auth/allowlist';
 
 /** מסלולים שחייבים להישאר פתוחים, אחרת אי אפשר בכלל להתחבר. */
-const PUBLIC_PATHS = ['/login', '/auth/callback', '/auth/signout'];
+// דף התשלום וה-webhook של הסולק פתוחים בהכרח: הלקוחה שמשלמת אינה משתמשת
+// במערכת, והסולק אינו מתחבר. שניהם חושפים רק מה שנדרש לתשלום עצמו.
+const PUBLIC_PATHS = ['/login', '/auth/callback', '/auth/signout', '/pay/', '/api/cardcom/webhook'];
 
 export async function middleware(request: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {

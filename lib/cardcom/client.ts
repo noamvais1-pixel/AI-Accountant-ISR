@@ -404,3 +404,132 @@ export async function listInstallmentTransactions(
 ): Promise<CardcomInstallmentTransaction[]> {
   return (await listTransactions(config, args)).filter((t) => t.installments > 1);
 }
+
+// ---------------------------------------------------------------------------
+// דף תשלום מתארח (LowProfile)
+// ---------------------------------------------------------------------------
+//
+// הלקוחה משלמת בדף של קארדקום; מספר הכרטיס לעולם לא עובר דרכנו. אנחנו יוצרים
+// את הדף עם פרטי העסקה והמסמך שיופק, וכשהוא שולם שואלים את קארדקום מה קרה —
+// לא סומכים על מה שמגיע ב-webhook או בכתובת ההפניה, כי את שניהם אפשר לזייף.
+
+export type CreateLowProfileInput = {
+  amountAgorot: number;
+  returnValue: string; // המזהה שלנו — חוזר אלינו בתוצאה
+  productName: string;
+  successUrl: string;
+  failedUrl: string;
+  cancelUrl: string;
+  webhookUrl: string;
+  maxInstallments: number;
+  customer: { name: string; taxId?: string; email?: string; phone?: string };
+  document: {
+    typeName: CardcomDocumentToCreate;
+    description: string;
+    unitCost: number; // בשקלים, לפי מוסכמת המסוף (כולל/לא כולל מע"מ)
+    isVatFree: boolean;
+    externalId: string;
+    sendByEmail: boolean;
+  } | null;
+};
+
+export async function createLowProfile(
+  config: CardcomConfig,
+  input: CreateLowProfileInput,
+): Promise<{ lowProfileId: string; url: string }> {
+  type Response = CardcomResponse & { LowProfileId?: string; Url?: string };
+  const json = await call<Response>(config, 'LowProfile/Create', {
+    TerminalNumber: config.terminalNumber,
+    Operation: 'ChargeOnly',
+    ReturnValue: input.returnValue,
+    Amount: input.amountAgorot / 100,
+    SuccessRedirectUrl: input.successUrl,
+    FailedRedirectUrl: input.failedUrl,
+    CancelRedirectUrl: input.cancelUrl,
+    WebHookUrl: input.webhookUrl,
+    ProductName: input.productName,
+    Language: 'he',
+    ISOCoinId: 1,
+    UIDefinition: {
+      CardOwnerNameValue: input.customer.name,
+      CardOwnerIdValue: input.customer.taxId,
+      CardOwnerEmailValue: input.customer.email,
+      CardOwnerPhoneValue: input.customer.phone,
+      IsCardOwnerEmailRequired: true,
+    },
+    AdvancedDefinition: {
+      MinNumOfPayments: 1,
+      MaxNumOfPayments: Math.max(1, input.maxInstallments),
+    },
+    ...(input.document
+      ? {
+          Document: {
+            DocumentTypeToCreate: input.document.typeName,
+            Name: input.customer.name,
+            TaxId: input.customer.taxId,
+            Email: input.customer.email,
+            IsSendByEmail: input.document.sendByEmail,
+            Mobile: input.customer.phone,
+            IsVatFree: input.document.isVatFree,
+            ExternalId: input.document.externalId,
+            Language: 'he',
+            Products: [
+              {
+                Description: input.document.description,
+                Quantity: 1,
+                UnitCost: input.document.unitCost,
+                TotalLineCost: input.document.unitCost,
+                IsVatFree: input.document.isVatFree,
+              },
+            ],
+          },
+        }
+      : {}),
+  });
+  if (!json.LowProfileId || !json.Url) throw new CardcomError('קארדקום לא החזירה כתובת לדף התשלום', -1, 'LowProfile/Create');
+  return { lowProfileId: json.LowProfileId, url: json.Url };
+}
+
+export type LowProfileResult = {
+  ResponseCode: number;
+  Description?: string;
+  LowProfileId?: string;
+  ReturnValue?: string;
+  TranzactionId?: number;
+  TranzactionInfo?: {
+    ResponseCode: number;
+    Description?: string;
+    TranzactionId: number;
+    Amount: number;
+    CreateDate?: string;
+    Last4CardDigitsString?: string;
+    Last4CardDigits?: number;
+    NumberOfPayments?: number;
+    FirstPaymentAmount?: number;
+    ConstPaymentAmount?: number;
+    CardOwnerName?: string;
+    DocumentNumber?: number;
+    DocumentType?: string | number;
+    DocumentUrl?: string;
+    IsRefund?: boolean;
+  } | null;
+  DocumentInfo?: {
+    ResponseCode: number;
+    Description?: string;
+    DocumentType?: string | number;
+    DocumentNumber?: number;
+    DocumentUrl?: string;
+  } | null;
+  UIValues?: { CardOwnerEmail?: string; CardOwnerName?: string; CardOwnerPhone?: string; NumOfPayments?: number } | null;
+};
+
+/** תוצאת דף תשלום. לא זורק על קוד תשובה שאינו 0 — "טרם שולם" הוא גם תשובה. */
+export async function getLowProfileResult(config: CardcomConfig, lowProfileId: string): Promise<LowProfileResult> {
+  const response = await fetch(`${config.baseUrl}/api/v11/LowProfile/GetLpResult`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ TerminalNumber: config.terminalNumber, ApiName: config.apiName, LowProfileId: lowProfileId }),
+  });
+  if (!response.ok) throw new CardcomError(`קארדקום החזירה שגיאת HTTP ${response.status}`, response.status, 'LowProfile/GetLpResult');
+  return (await response.json()) as LowProfileResult;
+}

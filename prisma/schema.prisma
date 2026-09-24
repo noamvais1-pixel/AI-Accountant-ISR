@@ -58,7 +58,8 @@ model Business {
   driveImportFolder String?   @default("עסק")
   driveImportSyncAt DateTime?
 
-  deals Deal[]
+  deals           Deal[]
+  paymentRequests PaymentRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -358,8 +359,9 @@ model Deal {
 
   notes String?
 
-  charges   DealCharge[]
-  documents Document[]
+  charges         DealCharge[]
+  documents       Document[]
+  paymentRequests PaymentRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -388,9 +390,50 @@ model DealCharge {
   documentId String?
   document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
 
+  // אם התקבול הגיע מדף התשלום — הבקשה שיצרה אותו
+  paymentRequest PaymentRequest?
+
   createdAt DateTime @default(now())
 
   @@index([dealId, paidAt])
   @@index([documentId])
   @@map("deal_charges")
+}
+
+// בקשת תשלום: קישור שהלקוחה פותחת ומשלמת בו בכרטיס. הדף עצמו מתארח אצל
+// הסולק (מספר הכרטיס לא עובר דרכנו); אנחנו יוצרים אותו, מקבלים הודעה כשהוא
+// שולם, ורושמים את התקבול ואת המסמך שהסולק הפיק.
+enum PaymentRequestStatus {
+  PENDING // הקישור נוצר, טרם שולם
+  SETTLING // התקבלה הודעת תשלום, הרישום בתהליך
+  PAID // שולם ונרשם
+  FAILED // ניסיון התשלום נכשל
+  CANCELLED // בוטל ידנית
+}
+
+model PaymentRequest {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  dealId     String
+  deal       Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  amountAgorot    Int
+  maxInstallments Int @default(1)
+
+  status       PaymentRequestStatus @default(PENDING)
+  lowProfileId String?              @unique // המזהה של הדף אצל הסולק
+  payUrl       String? // כתובת הדף המתארח אצל הסולק
+
+  chargeId      String?     @unique
+  charge        DealCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  transactionId String?
+  failureReason String?
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([dealId, createdAt])
+  @@index([businessId, status])
+  @@map("payment_requests")
 }

@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { getActiveBusiness, getActiveBusinessOrNull } from '@/lib/services/business';
 import { assignToPeriod } from '@/lib/services/documents';
 import { syncCardcomDocuments } from '@/lib/services/sync-cardcom';
-import { deductibleVat, reconcileAmounts, vatRateBpAt } from '@/lib/vat';
+import { deductibleVat, reconcileAmounts, vatRateBpAt, fromGross } from '@/lib/vat';
 import { toAgorot } from '@/lib/money';
 import { isValidIsraeliId, normalizeVatId } from '@/lib/israeli-id';
 import { buildPeriod } from '@/lib/periods';
@@ -354,6 +354,8 @@ export async function issueInvoice(_prev: ActionResult | null, form: FormData): 
         city: optionalStr(form, 'customerCity') ?? undefined,
       },
       lines,
+      // המחירים בטופס כוללים מע"מ; הספק ממיר למוסכמת המסוף
+      pricesIncludeVat: true,
       issueDate,
       comments: optionalStr(form, 'comments') ?? undefined,
       sendByEmail: form.get('sendByEmail') === 'on',
@@ -361,8 +363,8 @@ export async function issueInvoice(_prev: ActionResult | null, form: FormData): 
 
     // רושמים מיד בספרים כדי שלא נסתמך על הסנכרון הבא
     const rateBp = vatRateBpAt(issueDate);
-    const netAgorot = lines.reduce((sum, l) => sum + Math.round(l.unitPriceAgorot * l.quantity), 0);
-    const vatAgorot = Math.round((netAgorot * rateBp) / 10000);
+    const grossAgorot = lines.reduce((sum, l) => sum + Math.round(l.unitPriceAgorot * l.quantity), 0);
+    const { netAgorot, vatAgorot } = fromGross(grossAgorot, rateBp);
 
     const created = await prisma.document.create({
       data: {
@@ -667,5 +669,57 @@ export async function setDealStatusAction(id: string, status: 'OPEN' | 'CANCELLE
     return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'הפעולה נכשלה.' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// קישורי תשלום
+// ---------------------------------------------------------------------------
+
+export async function createPaymentRequestAction(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const { createPaymentRequest, publicPayUrl } = await import('@/lib/services/payment-requests');
+    const dealId = str(form, 'dealId');
+    const amount = num(form, 'amount');
+    if (amount === null || amount <= 0) return { ok: false, error: 'יש להזין סכום לתשלום.' };
+    const request = await createPaymentRequest(business.id, dealId, {
+      amountAgorot: toAgorot(amount),
+      maxInstallments: Number(str(form, 'maxInstallments') || '1'),
+      sendDocumentByEmail: form.get('sendByEmail') !== 'off',
+    });
+    revalidatePath(`/deals/${dealId}`);
+    return { ok: true, message: 'קישור התשלום נוצר.', data: { url: publicPayUrl(request.id) } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'יצירת הקישור נכשלה.' };
+  }
+}
+
+export async function cancelPaymentRequestAction(id: string): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const updated = await prisma.paymentRequest.updateMany({
+      where: { id, businessId: business.id, status: { in: ['PENDING', 'FAILED'] } },
+      data: { status: 'CANCELLED', resolvedAt: new Date() },
+    });
+    if (updated.count === 0) return { ok: false, error: 'אי אפשר לבטל קישור ששולם או שכבר בוטל.' };
+    revalidatePath('/deals');
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'הביטול נכשל.' };
+  }
+}
+
+export async function refreshPaymentRequestAction(id: string): Promise<ActionResult> {
+  try {
+    const business = await getActiveBusiness();
+    const request = await prisma.paymentRequest.findFirst({ where: { id, businessId: business.id }, select: { dealId: true } });
+    if (!request) return { ok: false, error: 'הבקשה לא נמצאה.' };
+    const { settlePaymentRequest } = await import('@/lib/services/payment-requests');
+    const r = await settlePaymentRequest(id);
+    revalidatePath(`/deals/${request.dealId}`);
+    return { ok: true, message: r.status === 'PAID' ? 'התשלום נרשם.' : r.reason ?? 'טרם שולם.' };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'הבדיקה נכשלה.' };
   }
 }

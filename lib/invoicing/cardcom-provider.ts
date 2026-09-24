@@ -32,6 +32,25 @@ const PAYMENT_DESCRIPTIONS: Record<NonNullable<IssueInvoiceInput['payments']>[nu
   OTHER: 'חיוב/זיכוי לקוחות',
 };
 
+/** האם המסוף מפרש מחירי שורות ככוללים מע"מ (ראו .env.example). */
+export function terminalPricesIncludeVat(): boolean {
+  return process.env.CARDCOM_PRICES_INCLUDE_VAT !== 'false';
+}
+
+/**
+ * ממיר מחיר אצלנו למוסכמת המסוף. אצלנו נטו ובמסוף כולל → מוסיפים מע"מ;
+ * אצלנו כולל ובמסוף נטו → נטו שמחזיר בדיוק את הסכום; אותה מוסכמה → כמו שהוא.
+ */
+export function unitPriceForTerminal(
+  agorot: number,
+  opts: { rateBp: number; vatFree: boolean; includesVat: boolean },
+): number {
+  if (opts.vatFree) return agorot;
+  const terminalIncludesVat = terminalPricesIncludeVat();
+  if (opts.includesVat === terminalIncludesVat) return agorot;
+  return terminalIncludesVat ? agorot + Math.round((agorot * opts.rateBp) / 10000) : netForExactTotal(agorot, opts.rateBp);
+}
+
 const DOCUMENT_KIND_TO_CARDCOM: Record<IssueInvoiceInput['documentKind'], CardcomDocumentToCreate> = {
   TAX_INVOICE: 'TaxInvoice',
   TAX_INVOICE_RECEIPT: 'TaxInvoiceAndReceipt',
@@ -119,15 +138,9 @@ export class CardcomProvider implements InvoiceProvider {
     // הזה ValidateItemsisPriceIncludeVat=true, ולכן זו ברירת המחדל; אפשר לשנות
     // ב-CARDCOM_PRICES_INCLUDE_VAT. המחירים אצלנו מומרים לאותה מוסכמה, כדי
     // שסה"כ המסמך יהיה בדיוק הסכום ששולם.
-    const terminalIncludesVat = process.env.CARDCOM_PRICES_INCLUDE_VAT !== 'false';
     const rateBp = vatRateBpAt(input.issueDate ?? new Date());
-    const toUnit = (agorot: number, vatFree: boolean) => {
-      if (vatFree || input.isVatFree) return agorot;
-      const inputIncludesVat = input.pricesIncludeVat ?? false;
-      if (inputIncludesVat === terminalIncludesVat) return agorot;
-      // אצלנו נטו, במסוף כולל → מוסיפים מע"מ; אצלנו כולל, במסוף נטו → נטו שמחזיר בדיוק את הסכום
-      return terminalIncludesVat ? agorot + Math.round((agorot * rateBp) / 10000) : netForExactTotal(agorot, rateBp);
-    };
+    const toUnit = (agorot: number, vatFree: boolean) =>
+      unitPriceForTerminal(agorot, { rateBp, vatFree: vatFree || (input.isVatFree ?? false), includesVat: input.pricesIncludeVat ?? false });
     const products: CardcomProduct[] = input.lines.map((line) => {
       const lineTotal = Math.round(line.unitPriceAgorot * line.quantity);
       const vatFree = line.isVatFree ?? false;

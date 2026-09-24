@@ -9,6 +9,8 @@ import { dealProgress, plannedSchedule } from '@/lib/deals';
 import { PAYMENT_METHOD_LABELS } from '@/lib/services/deals';
 import { getInvoiceProvider } from '@/lib/invoicing';
 import { ChargeForm, IssueForm, DealStatusButtons } from './deal-panels';
+import { PaymentLinks } from './payment-links';
+import { publicPayUrl } from '@/lib/services/payment-requests';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +28,7 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
     where: { id, businessId: business.id },
     include: {
       charges: { orderBy: { paidAt: 'asc' }, include: { document: { select: { id: true, number: true, docType: true, fileKey: true } } } },
+      paymentRequests: { orderBy: { createdAt: 'desc' } },
     },
   });
   if (!deal) notFound();
@@ -110,6 +113,27 @@ export default async function DealPage({ params }: { params: Promise<{ id: strin
           )}
         </Panel>
       </div>
+
+      <Panel title="קישור לתשלום בכרטיס">
+        <div className="p-4">
+          <PaymentLinks
+            dealId={deal.id}
+            dryRun={dryRun}
+            canCreate={deal.status === 'OPEN' && !progress.isPaid}
+            defaultAmount={(progress.nextDue?.amountAgorot ?? progress.remainingAgorot) / 100}
+            defaultInstallments={1}
+            links={deal.paymentRequests.map((r) => ({
+              id: r.id,
+              url: publicPayUrl(r.id),
+              amount: formatILS(r.amountAgorot),
+              maxInstallments: r.maxInstallments,
+              status: r.status,
+              createdAt: formatDate(r.createdAt),
+              failureReason: r.failureReason,
+            }))}
+          />
+        </div>
+      </Panel>
 
       <Panel title="תקבולים">
         {deal.charges.length === 0 ? (

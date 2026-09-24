@@ -9,7 +9,7 @@
 export type InvoiceLineInput = {
   description: string;
   quantity: number;
-  unitPriceAgorot: number; // מחיר יחידה לפני מע"מ, באגורות
+  unitPriceAgorot: number; // מחיר יחידה באגורות — לפני מע"מ, אלא אם pricesIncludeVat
   isVatFree?: boolean;
 };
 
