@@ -116,6 +116,16 @@ export default async function TaxableSalesPage({
                           {seq !== null && d.installments && (
                             <Badge tone="blue">תשלום {seq} מתוך {d.installments}</Badge>
                           )}
+                          {d.fileKey && (
+                            <a
+                              href={`/api/files/${d.fileKey}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] hover:bg-ink-100 dark:hover:bg-ink-800"
+                            >
+                              צפייה במסמך
+                            </a>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-2.5">

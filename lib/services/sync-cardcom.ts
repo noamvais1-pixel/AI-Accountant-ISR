@@ -4,9 +4,10 @@ import { cardcomConfigFromEnv, listTransactions } from '../cardcom/client';
 import { indexByDocument } from '../cardcom/payment-date';
 import { syncSchedule } from './recognition';
 import { pickReversedDocument } from '../reversals';
+import { refreshPaymentsFromDocument } from './document-payments';
 import { assignToPeriod } from './documents';
 import { vatRateBpAt } from '../vat';
-import type { DocType } from '@prisma/client';
+import { Prisma, type DocType } from '@prisma/client';
 import type { ProviderDocument } from '../invoicing/provider';
 
 export type SyncResult = {
@@ -101,6 +102,7 @@ export async function syncCardcomDocuments(args: {
 
   const documents = await provider.listDocuments({ fromDate: args.fromDate, toDate: args.toDate });
   result.fetched = documents.length;
+  const touched: string[] = [];
 
   for (const raw of documents) {
     try {
@@ -173,10 +175,12 @@ export async function syncCardcomDocuments(args: {
               });
               await place(sameDocument.id, paymentDateKnown ? doc.paymentDate : sameDocument.reportDate);
               await syncSchedule(sameDocument.id);
+              touched.push(sameDocument.id);
               result.updated++;
               continue;
             }
           }
+          touched.push(sameDocument.id);
           result.skipped++;
           continue;
         }
@@ -195,11 +199,13 @@ export async function syncCardcomDocuments(args: {
         await prisma.document.update({ where: { id: existing.id }, data: { ...data, reportDate } });
         await place(existing.id, reportDate);
         await syncSchedule(existing.id);
+        touched.push(existing.id);
         result.updated++;
       } else {
         const created = await prisma.document.create({ data, select: { id: true } });
         await place(created.id, data.reportDate);
         await syncSchedule(created.id);
+        touched.push(created.id);
         result.created++;
       }
     } catch (error) {
@@ -217,6 +223,21 @@ export async function syncCardcomDocuments(args: {
     await enrichInstallments(args);
   } catch (error) {
     result.errors.push(`תשלומים: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // המסמך עצמו הוא הרשומה המחייבת למועדי התשלום: ה-PDF נקרא פעם אחת לכל
+  // מסמך שעדיין לא נקרא, ומועד ההכרה מיושר לפיו. מסמך שכבר נקרא לא נפתח שוב.
+  const unread = await prisma.document.findMany({
+    where: { id: { in: touched }, paymentLines: { equals: Prisma.DbNull } },
+    select: { id: true, number: true },
+  });
+  for (const d of unread) {
+    try {
+      const r = await refreshPaymentsFromDocument(d.id, { frequency: business.vatFrequency });
+      if (r.status === 'updated') result.updated++;
+    } catch (error) {
+      result.errors.push(`קריאת מסמך ${d.number}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   // אחרי שהתשלומים ידועים: זיכוי שמבטל מסמך בתשלומים מקבל את הלוח שלו

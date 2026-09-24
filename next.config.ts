@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // יש package-lock.json גם בתיקיית הבית; בלי זה Next בוחר אותה כשורש הפרויקט.
   outputFileTracingRoot: import.meta.dirname,
+  // pdf.js נטען בזמן ריצה בשרת (קריאת פרטי התשלום ממסמכי קארדקום); אריזה שלו שוברת אותו.
+  serverExternalPackages: ['pdfjs-dist'],
   experimental: {
     serverActions: { bodySizeLimit: '15mb' },
   },

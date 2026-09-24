@@ -285,6 +285,22 @@ export async function listDocuments(
   return all;
 }
 
+/**
+ * כתובת להורדת ה-PDF של מסמך קיים. הכתובת זמנית (נושאת קוד גישה), ולכן
+ * מורידים את הקובץ מיד ושומרים אותו אצלנו במקום לשמור את הקישור.
+ */
+export async function getDocumentUrl(
+  config: CardcomConfig,
+  args: { documentTypeName: string; documentNumber: number },
+): Promise<string> {
+  const json = await call<CardcomResponse & { DocUrl?: string }>(config, 'Documents/CreateDocumentUrl', {
+    DocumentType: args.documentTypeName,
+    DocumentNumber: args.documentNumber,
+  });
+  if (!json.DocUrl) throw new CardcomError('קארדקום לא החזירה כתובת למסמך', -1, 'Documents/CreateDocumentUrl');
+  return json.DocUrl;
+}
+
 // ---------------------------------------------------------------------------
 // ביטול מסמך
 // ---------------------------------------------------------------------------
