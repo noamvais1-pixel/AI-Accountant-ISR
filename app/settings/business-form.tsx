@@ -10,7 +10,7 @@ const label = 'block text-xs font-medium text-[var(--muted)] mb-1.5';
 
 export function BusinessForm({ business }: { business: Business | null }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveBusiness, null);
-  const [legalType, setLegalType] = useState(business?.legalType ?? 'OSEK_MURSHE');
+  const [legalType, setLegalType] = useState<string>(business?.legalType ?? 'OSEK_MURSHE');
   const exempt = legalType === 'OSEK_PATUR';
 
   return (
