@@ -3,6 +3,7 @@ import { Heebo } from 'next/font/google';
 import Link from 'next/link';
 import { currentUser } from '@/lib/auth/server';
 import { isPlatformAdmin } from '@/lib/auth/admin';
+import { getActiveBusinessOrNull } from '@/lib/services/business';
 import './globals.css';
 
 const heebo = Heebo({ subsets: ['hebrew', 'latin'], variable: '--font-heebo', display: 'swap' });
@@ -24,6 +25,8 @@ const NAV = [
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
+  const business = user ? await getActiveBusinessOrNull() : null;
+  const nav = business ? [...NAV, ...(isPlatformAdmin(user?.email) ? [{ href: '/admin/customers', label: 'לקוחות' }] : [])] : [];
   return (
     <html lang="he" dir="rtl" className={heebo.variable}>
       <body className="min-h-dvh font-sans">
@@ -35,7 +38,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 רואה חשבון AI
               </Link>
               <nav className="flex flex-wrap items-center gap-1 text-sm">
-                {[...NAV, ...(isPlatformAdmin(user?.email) ? [{ href: '/admin/customers', label: 'לקוחות' }] : [])].map((item) => (
+                {nav.map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}

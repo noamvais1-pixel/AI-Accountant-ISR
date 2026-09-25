@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { getActiveBusinessOrNull } from '@/lib/services/business';
 import { Panel, Alert, Stat, Badge, EmptyState } from '@/components/ui';
@@ -17,22 +18,8 @@ function daysUntil(date: Date): number {
 export default async function DashboardPage() {
   const business = await getActiveBusinessOrNull();
 
-  if (!business) {
-    return (
-      <div className="mx-auto max-w-2xl space-y-4 py-12">
-        <h1 className="text-2xl font-semibold tracking-tight">ברוכה הבאה</h1>
-        <p className="text-sm text-[var(--muted)]">
-          המערכת קולטת קבלות מצילום, מושכת את חשבוניות המס מקארדקום, ומחשבת את דוח המע"מ התקופתי.
-        </p>
-        <Alert tone="info" title="שלב ראשון">
-          <Link href="/settings" className="underline">
-            הזיני את פרטי העסק
-          </Link>{' '}
-          — שם, מספר עוסק ותדירות דיווח. בלעדיהם אי אפשר להפיק דוח.
-        </Alert>
-      </div>
-    );
-  }
+  // בלי עסק אין מה להציג — הכניסה הראשונה מתחילה בפתיחת העסק
+  if (!business) redirect('/onboarding');
 
   const current = periodForDate(new Date(), business.vatFrequency);
   const reporting = previousPeriod(current, business.vatFrequency);

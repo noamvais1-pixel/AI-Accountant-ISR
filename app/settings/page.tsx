@@ -8,6 +8,7 @@ import { Panel, Alert, Badge } from '@/components/ui';
 import { BusinessForm } from './business-form';
 import { MembersPanel } from './members-panel';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { membersOf } from '@/lib/services/business';
 import { apiUser } from '@/lib/auth/server';
 import { formatDateTime } from '@/lib/format';
@@ -32,6 +33,7 @@ export default async function SettingsPage({
   searchParams: Promise<{ driveConnected?: string; driveError?: string }>;
 }) {
   const business = await getActiveBusinessOrNull();
+  if (!business) redirect('/onboarding');
   const params = await searchParams;
 
   const [pendingBackup, backedUp] = business
