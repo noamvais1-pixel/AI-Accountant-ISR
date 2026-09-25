@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Heebo } from 'next/font/google';
 import Link from 'next/link';
 import { currentUser } from '@/lib/auth/server';
+import { isPlatformAdmin } from '@/lib/auth/admin';
 import './globals.css';
 
 const heebo = Heebo({ subsets: ['hebrew', 'latin'], variable: '--font-heebo', display: 'swap' });
@@ -34,7 +35,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 רואה חשבון AI
               </Link>
               <nav className="flex flex-wrap items-center gap-1 text-sm">
-                {NAV.map((item) => (
+                {[...NAV, ...(isPlatformAdmin(user?.email) ? [{ href: '/admin/customers', label: 'לקוחות' }] : [])].map((item) => (
                   <Link
                     key={item.href}
                     href={item.href}
