@@ -70,6 +70,9 @@ export function Wizard(props: {
   const [sPending, start] = useTransition();
   const [sMsg, setSMsg] = useState<ActionResult | null>(null);
   const [mode, setMode] = useState<'apply' | 'existing'>(business?.cardcomConnected ? 'existing' : 'apply');
+  const [legalType, setLegalType] = useState(business?.legalType ?? 'OSEK_MURSHE');
+  // עוסק פטור אינו מגיש דוחות מע"מ תקופתיים — רק הצהרה שנתית; תדירות הדיווח לא רלוונטית
+  const exempt = legalType === 'OSEK_PATUR';
 
   const submitted = app?.status === 'SUBMITTED' || app?.status === 'APPROVED';
   const Err = ({ s }: { s: ActionResult | null }) => (s && !s.ok ? <Alert tone="error">{s.error}</Alert> : null);
@@ -106,16 +109,23 @@ export function Wizard(props: {
               <div><label className={label}>מספר עוסק / ח.פ *</label><input name="vatId" defaultValue={business?.vatId} required inputMode="numeric" className={`${field} ltr-num`} /></div>
               <div>
                 <label className={label}>סוג העסק</label>
-                <select name="legalType" defaultValue={business?.legalType ?? 'OSEK_MURSHE'} className={field}>
+                <select name="legalType" value={legalType} onChange={(e) => setLegalType(e.target.value)} className={field}>
                   <option value="OSEK_MURSHE">עוסק מורשה</option><option value="OSEK_PATUR">עוסק פטור</option><option value="COMPANY">חברה בע"מ</option><option value="AMUTA">עמותה</option>
                 </select>
               </div>
-              <div>
-                <label className={label}>תדירות דיווח מע"מ</label>
-                <select name="vatFrequency" defaultValue={business?.vatFrequency ?? 'BIMONTHLY'} className={field}>
-                  <option value="BIMONTHLY">דו-חודשי</option><option value="MONTHLY">חודשי</option>
-                </select>
-              </div>
+              {exempt ? (
+                <div className="self-end rounded-lg bg-ink-50 px-3 py-2 text-xs text-[var(--muted)] dark:bg-ink-900">
+                  עוסק פטור אינו מגיש דוחות מע"מ תקופתיים, רק הצהרה שנתית על המחזור. המערכת תעקוב אחרי המחזור השנתי מול התקרה.
+                  <input type="hidden" name="vatFrequency" value="BIMONTHLY" />
+                </div>
+              ) : (
+                <div>
+                  <label className={label}>תדירות דיווח מע"מ</label>
+                  <select name="vatFrequency" defaultValue={business?.vatFrequency ?? 'BIMONTHLY'} className={field}>
+                    <option value="BIMONTHLY">דו-חודשי</option><option value="MONTHLY">חודשי</option>
+                  </select>
+                </div>
+              )}
               <div className="sm:col-span-2"><label className={label}>תחום הפעילות *</label><input name="activity" defaultValue={app?.activity} required placeholder='למשל "ליווי עסקי וקורסים לבעלות עסקים"' className={field} /></div>
               <div><label className={label}>רחוב *</label><input name="street" defaultValue={app?.street} required className={field} /></div>
               <div><label className={label}>מספר בית</label><input name="houseNumber" defaultValue={app?.houseNumber} className={`${field} ltr-num`} /></div>
